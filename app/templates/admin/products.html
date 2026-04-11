@@ -1,0 +1,67 @@
+{% extends "admin/base.html" %}
+{% block title %}Товары{% endblock %}
+
+{% block content %}
+<div class="admin-page-header">
+    <h2 class="admin-page-title">Товары</h2>
+    <a href="/admin/products/add" class="admin-btn admin-btn-primary"><i class="fas fa-plus"></i> Добавить товар</a>
+</div>
+
+<div class="admin-card">
+    {% if products %}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Фото</th>
+                <th>Название</th>
+                <th>Бренд</th>
+                <th>SKU</th>
+                <th>Цена</th>
+                <th>Категория</th>
+                <th>Статус</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in products %}
+            <tr>
+                <td>
+                    {% if p.images %}
+                    <img src="{{ p.images[0].url }}" class="product-thumb" alt="">
+                    {% else %}
+                    <div style="width:50px;height:50px;background:#f3f4f6;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#d1d5db;"><i class="fas fa-image"></i></div>
+                    {% endif %}
+                </td>
+                <td><strong>{{ p.name }}</strong></td>
+                <td>{{ p.brand }}</td>
+                <td style="font-family:monospace;font-size:0.85rem;">{{ p.sku }}</td>
+                <td>{{ "{:,.0f}".format(p.price).replace(",", " ") }} ₽</td>
+                <td>{{ p.category.name if p.category else '—' }}</td>
+                <td>
+                    {% if p.is_active %}
+                    <span class="admin-badge admin-badge-green">Активен</span>
+                    {% else %}
+                    <span class="admin-badge admin-badge-gray">Скрыт</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="admin-actions">
+                        <a href="/admin/products/edit/{{ p.id }}" class="admin-btn admin-btn-outline admin-btn-sm"><i class="fas fa-pen"></i></a>
+                        <form method="post" action="/admin/products/delete/{{ p.id }}" onsubmit="return confirm('Удалить товар?')" style="margin:0;">
+                            <button type="submit" class="admin-btn admin-btn-danger admin-btn-sm"><i class="fas fa-trash"></i></button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="text-align:center;padding:48px;color:#6b7280;">
+        <i class="fas fa-box-open" style="font-size:2rem;margin-bottom:12px;display:block;"></i>
+        <p>Товаров пока нет</p>
+        <a href="/admin/products/add" class="admin-btn admin-btn-primary" style="margin-top:16px;">Добавить первый товар</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

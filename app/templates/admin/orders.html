@@ -1,0 +1,61 @@
+{% extends "admin/base.html" %}
+{% block title %}Заказы{% endblock %}
+
+{% block content %}
+<div class="admin-page-header">
+    <h2 class="admin-page-title">Заказы</h2>
+</div>
+
+<div class="admin-card">
+    {% if orders %}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Номер</th>
+                <th>Дата</th>
+                <th>Товары</th>
+                <th>Сумма</th>
+                <th>Статус</th>
+                <th>Трек-номер</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in orders %}
+            <tr>
+                <td><strong>{{ order.order_number }}</strong></td>
+                <td>{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                <td>
+                    {% for item in order.items %}
+                    <div style="font-size:0.85rem;">{{ item.product_name }} ×{{ item.quantity }}</div>
+                    {% endfor %}
+                </td>
+                <td>{{ "{:,.0f}".format(order.total).replace(",", " ") }} ₽</td>
+                <td>
+                    <form method="post" action="/admin/orders/update/{{ order.id }}" style="margin:0;display:flex;gap:8px;align-items:center;">
+                        <select name="status" class="admin-select" onchange="this.form.submit()">
+                            <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>В обработке</option>
+                            <option value="paid" {% if order.status == 'paid' %}selected{% endif %}>Оплачен</option>
+                            <option value="shipped" {% if order.status == 'shipped' %}selected{% endif %}>Отправлен</option>
+                            <option value="delivered" {% if order.status == 'delivered' %}selected{% endif %}>Доставлен</option>
+                            <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>Отменён</option>
+                        </select>
+                        <input type="text" name="tracking_number" class="admin-tracking-input" value="{{ order.tracking_number or '' }}" placeholder="Трек-номер">
+                        <button type="submit" class="admin-btn admin-btn-outline admin-btn-sm"><i class="fas fa-save"></i></button>
+                    </form>
+                </td>
+                <td>{{ order.tracking_number or '—' }}</td>
+                <td>
+                    <form method="post" action="/admin/orders/delete/{{ order.id }}" onsubmit="return confirm('Удалить заказ?')" style="margin:0;">
+                        <button type="submit" class="admin-btn admin-btn-danger admin-btn-sm"><i class="fas fa-trash"></i></button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #6b7280; text-align: center; padding: 48px;">Заказов пока нет</p>
+    {% endif %}
+</div>
+{% endblock %}

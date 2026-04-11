@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ t('login_title', lang) }}{% endblock %}
+
+{% block content %}
+<section class="section auth-section">
+    <div class="container">
+        <div class="auth-card animate-fade-up">
+            <h1 class="auth-title">{{ t('login_title', lang) }}</h1>
+            {% if error %}
+            <div class="alert alert-error">{{ error }}</div>
+            {% endif %}
+            <form method="post" action="/auth/login" class="auth-form">
+                <div class="form-group">
+                    <label>{{ t('email_label', lang) }}</label>
+                    <input type="email" name="email" class="form-input" placeholder="{{ t('email_placeholder', lang) }}" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label>{{ t('password_label', lang) }}</label>
+                    <input type="password" name="password" class="form-input" placeholder="{{ t('password_placeholder', lang) }}" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">{{ t('login_btn', lang) }}</button>
+            </form>
+            <p class="auth-footer">{{ t('no_account', lang) }} <a href="/auth/register">{{ t('register_btn', lang) }}</a></p>
+        </div>
+    </div>
+</section>
+{% endblock %}

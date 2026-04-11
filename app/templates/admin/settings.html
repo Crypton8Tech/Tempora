@@ -1,0 +1,49 @@
+{% extends "admin/base.html" %}
+{% block title %}Настройки{% endblock %}
+
+{% block content %}
+<div class="admin-section">
+    <h2>Настройки платёжной системы Stripe</h2>
+
+    {% if success %}
+    <div class="alert alert-success" style="background:#d4edda;color:#155724;padding:12px 16px;border-radius:8px;margin-bottom:20px;">
+        Настройки успешно сохранены!
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/admin/settings" class="admin-form" style="max-width:600px;">
+        <div class="form-group">
+            <label for="stripe_public_key">Stripe Public Key (pk_...)</label>
+            <input type="text" id="stripe_public_key" name="stripe_public_key"
+                   value="{{ stripe_public_key }}" placeholder="pk_test_..." autocomplete="off">
+        </div>
+
+        <div class="form-group">
+            <label for="stripe_secret_key">Stripe Secret Key (sk_...)</label>
+            <input type="password" id="stripe_secret_key" name="stripe_secret_key"
+                   value="{{ stripe_secret_key }}" placeholder="sk_test_..." autocomplete="off">
+            <small style="color:#999;">Не отображается в открытом виде в целях безопасности</small>
+        </div>
+
+        <div class="form-group">
+            <label for="stripe_webhook_secret">Stripe Webhook Secret (whsec_...)</label>
+            <input type="password" id="stripe_webhook_secret" name="stripe_webhook_secret"
+                   value="{{ stripe_webhook_secret }}" placeholder="whsec_..." autocomplete="off">
+            <small style="color:#999;">Используется для проверки webhook-событий от Stripe</small>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="margin-top:10px;">Сохранить</button>
+    </form>
+
+    <div style="margin-top:30px;padding:20px;background:#f8f9fa;border-radius:8px;max-width:600px;">
+        <h3 style="margin-top:0;">Как настроить Stripe</h3>
+        <ol style="padding-left:20px;line-height:1.8;">
+            <li>Зарегистрируйтесь на <a href="https://dashboard.stripe.com/register" target="_blank" rel="noopener">stripe.com</a></li>
+            <li>Перейдите в <strong>Developers → API keys</strong></li>
+            <li>Скопируйте <strong>Publishable key</strong> и <strong>Secret key</strong></li>
+            <li>Для получения Webhook Secret создайте webhook в <strong>Developers → Webhooks</strong>, указав URL: <code>https://ваш-домен/api/stripe/webhook</code></li>
+            <li>Выберите событие <code>checkout.session.completed</code></li>
+        </ol>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}{{ loc(product, 'name', lang) }}{% endblock %}
+
+{% block content %}
+<section class="section product-section">
+    <div class="container">
+        <a href="/catalog" class="back-link animate-fade-up"><i class="fas fa-arrow-left"></i> {{ t('back_to_catalog', lang) }}</a>
+
+        <div class="product-detail animate-fade-up delay-1">
+            <!-- Gallery -->
+            <div class="product-gallery">
+                <div class="gallery-main">
+                    <img id="mainImage" src="{{ product.images[0].url if product.images else '/static/uploads/placeholder.svg' }}" alt="{{ loc(product, 'name', lang) }}">
+                </div>
+                {% if product.images|length > 1 %}
+                <div class="gallery-thumbs">
+                    {% for img in product.images %}
+                    <img src="{{ img.url }}" alt="Photo {{ loop.index }}"
+                         class="thumb {% if loop.first %}active{% endif %}"
+                         onclick="changeMainImage(this, '{{ img.url }}')">
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Info -->
+            <div class="product-info">
+                <span class="product-brand-label">{{ product.brand }}</span>
+                <h1 class="product-title">{{ loc(product, 'name', lang) }}</h1>
+                <p class="product-model" {% if not product.model %}style="display:none"{% endif %}>
+                    {{ t('model_label', lang) }}: {{ product.model }}
+                </p>
+                <div class="product-price-block">
+                    <span class="product-price-large">{{ format_price(product.price, currency) }}</span>
+                </div>
+
+                <div class="product-description">
+                    {{ loc(product, 'description', lang) | replace("\n", "<br>") | safe }}
+                </div>
+
+                {% if product.characteristics %}
+                <div class="product-chars">
+                    <h3>{{ t('characteristics', lang) }}</h3>
+                    <table class="chars-table">
+                        {% for key, value in product.characteristics.items() %}
+                        <tr><td>{{ key }}</td><td>{{ value }}</td></tr>
+                        {% endfor %}
+                    </table>
+                </div>
+                {% endif %}
+
+                <div class="product-actions">
+                    <form id="addToCartForm" onsubmit="return addToCart(event)">
+                        <input type="hidden" name="product_id" value="{{ product.id }}">
+                        <div class="qty-selector">
+                            <button type="button" class="qty-btn" onclick="changeQty(-1)">−</button>
+                            <input type="number" name="quantity" id="qtyInput" value="1" min="1" max="10" class="qty-input">
+                            <button type="button" class="qty-btn" onclick="changeQty(1)">+</button>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-lg add-to-cart-btn">
+                            <i class="fas fa-shopping-bag"></i> {{ t('add_to_cart', lang) }}
+                        </button>
+                    </form>
+                </div>
+                <div id="cartMessage" class="cart-message"></div>
+            </div>
+        </div>
+
+        <!-- Related -->
+        {% if related %}
+        <div class="related-section">
+            <h2 class="section-title">{{ t('related_products', lang) }}</h2>
+            <div class="products-grid">
+                {% for p in related %}
+                <a href="/product/{{ p.sku }}" class="product-card animate-on-scroll">
+                    <div class="product-card-img">
+                        <img src="{{ p.images[0].url if p.images else '/static/uploads/placeholder.svg' }}" alt="{{ loc(p, 'name', lang) }}" loading="lazy">
+                        <div class="product-card-overlay">
+                            <span class="overlay-text">{{ t('view_details', lang) }}</span>
+                        </div>
+                    </div>
+                    <div class="product-card-info">
+                        <span class="product-brand">{{ p.brand }}</span>
+                        <h3 class="product-name">{{ loc(p, 'name', lang) }}</h3>
+                        <p class="product-price">{{ format_price(p.price, currency) }}</p>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const LANG_ADDED = {{ ("'" + t('added_to_cart', lang) + "'")|safe }};
+const LANG_ERROR = {{ ("'" + t('error_adding', lang) + "'")|safe }};
+const LANG_NETWORK = {{ ("'" + t('network_error', lang) + "'")|safe }};
+
+function changeMainImage(thumb, url) {
+    document.getElementById('mainImage').src = url;
+    document.querySelectorAll('.thumb').forEach(t => t.classList.remove('active'));
+    thumb.classList.add('active');
+}
+
+function changeQty(delta) {
+    const inp = document.getElementById('qtyInput');
+    let v = parseInt(inp.value) + delta;
+    if (v < 1) v = 1;
+    if (v > 10) v = 10;
+    inp.value = v;
+}
+
+function addToCart(e) {
+    e.preventDefault();
+    const form = document.getElementById('addToCartForm');
+    const data = new FormData(form);
+    fetch('/api/cart/add', { method: 'POST', body: data })
+        .then(r => r.json())
+        .then(res => {
+            const msg = document.getElementById('cartMessage');
+            if (res.ok) {
+                msg.textContent = LANG_ADDED;
+                msg.className = 'cart-message success show';
+                const badge = document.querySelector('.cart-badge');
+                if (badge) {
+                    badge.textContent = res.cart_count;
+                } else {
+                    const btn = document.querySelector('.cart-btn');
+                    const b = document.createElement('span');
+                    b.className = 'cart-badge';
+                    b.textContent = res.cart_count;
+                    btn.appendChild(b);
+                }
+            } else {
+                msg.textContent = LANG_ERROR;
+                msg.className = 'cart-message error show';
+            }
+            setTimeout(() => msg.classList.remove('show'), 3000);
+        })
+        .catch(() => {
+            const msg = document.getElementById('cartMessage');
+            msg.textContent = LANG_NETWORK;
+            msg.className = 'cart-message error show';
+        });
+    return false;
+}
+</script>
+{% endblock %}
