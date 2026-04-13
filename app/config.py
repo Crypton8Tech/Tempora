@@ -1,4 +1,4 @@
-"""TemporaShop application configuration."""
+"""TemporaShop web application configuration."""
 
 import os
 from dotenv import load_dotenv
@@ -7,11 +7,7 @@ load_dotenv()
 
 
 class Settings:
-    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     BOT_USERNAME: str = os.getenv("BOT_USERNAME", "TemporaShopBot")
-    BOT_ADMIN_IDS: list[int] = [
-        int(x.strip()) for x in os.getenv("BOT_ADMIN_IDS", "0").split(",") if x.strip()
-    ]
     SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me")
     ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME", "admin")
     ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "admin123")

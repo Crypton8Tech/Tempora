@@ -1,4 +1,4 @@
-"""API routes for cart, orders, Stripe checkout, and AJAX endpoints."""
+"""API routes for cart, orders, payment checkout, and AJAX endpoints."""
 
 from fastapi import APIRouter, Request, Depends, Form, Header
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -25,19 +25,6 @@ def _get_user(request: Request, db: Session) -> User | None:
     if uid is None:
         return None
     return db.query(User).filter(User.id == uid).first()
-
-
-def _get_stripe_keys(db: Session) -> tuple[str, str, str]:
-    """Return (public_key, secret_key, webhook_secret) from DB settings or env."""
-    keys = {}
-    for row in db.query(SiteSetting).filter(
-        SiteSetting.key.in_(["stripe_public_key", "stripe_secret_key", "stripe_webhook_secret"])
-    ).all():
-        keys[row.key] = row.value or ""
-    pk = keys.get("stripe_public_key") or settings.STRIPE_PUBLIC_KEY
-    sk = keys.get("stripe_secret_key") or settings.STRIPE_SECRET_KEY
-    wh = keys.get("stripe_webhook_secret") or settings.STRIPE_WEBHOOK_SECRET
-    return pk, sk, wh
 
 
 # ── Guest cart helpers ────────────────────────────────────────────────────────
@@ -212,77 +199,67 @@ async def checkout(
 
     db.commit()
 
-    # Try Stripe checkout
-    _, stripe_sk, _ = _get_stripe_keys(db)
-    if stripe_sk:
-        try:
-            import stripe
-            stripe.api_key = stripe_sk
-
-            line_items = []
-            for product, qty, _ in cart_products:
-                line_items.append({
-                    "price_data": {
-                        "currency": "rub",
-                        "product_data": {"name": product.name},
-                        "unit_amount": int(product.price * 100),
-                    },
-                    "quantity": qty,
-                })
-
-            site_url = settings.SITE_URL.rstrip("/")
-            session = stripe.checkout.Session.create(
-                payment_method_types=["card"],
-                line_items=line_items,
-                mode="payment",
-                success_url=f"{site_url}/order-success/{order_number}?paid=1",
-                cancel_url=f"{site_url}/cart",
-                metadata={"order_number": order_number},
-            )
-            order.stripe_session_id = session.id
-            db.commit()
-            return RedirectResponse(session.url, status_code=303)
-        except Exception as e:
-            logger.error(f"Stripe error: {e}")
-            # Fall through to regular success page
+    # Payment checkout via active provider
+    from app.payments import create_checkout
+    redirect_url = create_checkout(db, order, cart_products)
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
 
     return RedirectResponse(f"/order-success/{order_number}", status_code=302)
 
 
-# ── Stripe Webhook ────────────────────────────────────────────────────────────
+# ── Payment Webhooks ──────────────────────────────────────────────────────────
 
 @router.post("/stripe/webhook")
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
-    import stripe
-
-    _, stripe_sk, webhook_secret = _get_stripe_keys(db)
-    if not stripe_sk:
-        return JSONResponse({"error": "stripe not configured"}, status_code=400)
-
-    stripe.api_key = stripe_sk
+    from app.payments import handle_webhook
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature", "")
+    ok = handle_webhook("stripe", db, payload, sig_header)
+    if not ok:
+        return JSONResponse({"error": "failed"}, status_code=400)
+    return JSONResponse({"ok": True})
 
-    try:
-        if webhook_secret:
-            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
-        else:
-            import json
-            event = json.loads(payload)
-    except Exception as e:
-        logger.error(f"Stripe webhook error: {e}")
-        return JSONResponse({"error": "invalid payload"}, status_code=400)
 
-    if event.get("type") == "checkout.session.completed":
-        session_data = event["data"]["object"]
-        order_number = session_data.get("metadata", {}).get("order_number")
-        if order_number:
-            order = db.query(Order).filter(Order.order_number == order_number).first()
-            if order:
-                order.status = "paid"
-                order.stripe_payment_intent = session_data.get("payment_intent", "")
-                db.commit()
+@router.post("/yookassa/webhook")
+async def yookassa_webhook(request: Request, db: Session = Depends(get_db)):
+    from app.payments import handle_webhook
+    payload = await request.body()
+    ok = handle_webhook("yookassa", db, payload, "")
+    if not ok:
+        return JSONResponse({"error": "failed"}, status_code=400)
+    return JSONResponse({"ok": True})
 
+
+@router.post("/cloudpayments/webhook")
+async def cloudpayments_webhook(request: Request, db: Session = Depends(get_db)):
+    from app.payments import handle_webhook
+    payload = await request.body()
+    ok = handle_webhook("cloudpayments", db, payload, "")
+    if not ok:
+        return JSONResponse({"error": "failed"}, status_code=400)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/paypal/webhook")
+async def paypal_webhook(request: Request, db: Session = Depends(get_db)):
+    from app.payments import handle_webhook
+    payload = await request.body()
+    ok = handle_webhook("paypal", db, payload, "")
+    if not ok:
+        return JSONResponse({"error": "failed"}, status_code=400)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/custom-webhook/{provider_slug}")
+async def custom_provider_webhook(provider_slug: str, request: Request, db: Session = Depends(get_db)):
+    from app.payments import handle_webhook
+    payload = await request.body()
+    sig_header = request.headers.get("x-signature", request.headers.get("x-webhook-signature", ""))
+    ok = handle_webhook(provider_slug, db, payload, sig_header)
+    if not ok:
+        return JSONResponse({"error": "failed"}, status_code=400)
+    return JSONResponse({"ok": True})
     return JSONResponse({"ok": True})
 
 

@@ -318,7 +318,7 @@ async def admin_delete_order(order_id: int, request: Request, db: Session = Depe
     return RedirectResponse("/admin/orders", status_code=302)
 
 
-# ── Settings (Stripe) ────────────────────────────────────────────────────────
+# ── Settings (Payment providers) ──────────────────────────────────────────────
 
 def _get_setting(db: Session, key: str) -> str:
     row = db.query(SiteSetting).filter(SiteSetting.key == key).first()
@@ -337,26 +337,154 @@ def _set_setting(db: Session, key: str, value: str):
 async def admin_settings_page(request: Request, db: Session = Depends(get_db)):
     if not _is_admin(request):
         return RedirectResponse("/admin/login", status_code=302)
+
+    from app.payments import (
+        PROVIDERS, PROVIDER_FIELDS, PROVIDER_INSTRUCTIONS,
+        get_active_provider, get_provider_settings,
+        get_custom_providers, get_custom_provider_fields,
+    )
+
     ctx = _admin_ctx(request)
-    ctx["stripe_public_key"] = _get_setting(db, "stripe_public_key")
-    ctx["stripe_secret_key"] = _get_setting(db, "stripe_secret_key")
-    ctx["stripe_webhook_secret"] = _get_setting(db, "stripe_webhook_secret")
+    active = get_active_provider(db)
+    custom_providers = get_custom_providers(db)
+
+    all_providers = dict(PROVIDERS)
+    all_providers.update(custom_providers)
+    ctx["providers"] = all_providers
+    ctx["builtin_providers"] = list(PROVIDERS.keys())
+    ctx["active_provider"] = active
+
+    # Merge built-in + custom fields
+    all_fields = dict(PROVIDER_FIELDS)
+    for slug in custom_providers:
+        all_fields[slug] = get_custom_provider_fields(db, slug)
+    ctx["provider_fields"] = all_fields
+    ctx["provider_instructions"] = PROVIDER_INSTRUCTIONS
+    ctx["site_url"] = settings.SITE_URL.rstrip("/")
+
+    # Load saved values for all providers
+    provider_values = {}
+    for slug in all_providers:
+        provider_values[slug] = get_provider_settings(db, slug)
+    ctx["provider_values"] = provider_values
+
     ctx["success"] = request.query_params.get("success", "")
+    ctx["custom_providers"] = custom_providers
     return templates.TemplateResponse("admin/settings.html", ctx)
 
 
 @router.post("/settings")
 async def admin_settings_save(
     request: Request,
-    stripe_public_key: str = Form(""),
-    stripe_secret_key: str = Form(""),
-    stripe_webhook_secret: str = Form(""),
     db: Session = Depends(get_db),
 ):
     if not _is_admin(request):
         return RedirectResponse("/admin/login", status_code=302)
-    _set_setting(db, "stripe_public_key", stripe_public_key.strip())
-    _set_setting(db, "stripe_secret_key", stripe_secret_key.strip())
-    _set_setting(db, "stripe_webhook_secret", stripe_webhook_secret.strip())
+
+    from app.payments import (
+        PROVIDERS, PROVIDER_FIELDS,
+        get_custom_providers, get_custom_provider_fields,
+    )
+
+    form = await request.form()
+    provider = form.get("payment_provider", "stripe")
+
+    all_providers = dict(PROVIDERS)
+    all_providers.update(get_custom_providers(db))
+
+    if provider not in all_providers:
+        provider = "stripe"
+
+    _set_setting(db, "payment_provider", provider)
+
+    # Save fields for the selected provider
+    if provider in PROVIDER_FIELDS:
+        fields = PROVIDER_FIELDS[provider]
+    else:
+        fields = get_custom_provider_fields(db, provider)
+
+    for fdef in fields:
+        key = fdef[0]
+        val = form.get(key, "")
+        _set_setting(db, key, str(val).strip())
+
+    db.commit()
+    return RedirectResponse("/admin/settings?success=1", status_code=302)
+
+
+@router.post("/settings/add-provider")
+async def admin_add_custom_provider(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Add a new custom payment provider."""
+    if not _is_admin(request):
+        return RedirectResponse("/admin/login", status_code=302)
+
+    from app.payments import (
+        PROVIDERS, get_custom_providers, save_custom_providers,
+        save_custom_provider_fields, _default_custom_fields,
+    )
+    import re
+
+    form = await request.form()
+    name = form.get("new_provider_name", "").strip()
+    if not name:
+        return RedirectResponse("/admin/settings", status_code=302)
+
+    # Generate slug from name
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    if not slug or slug in PROVIDERS:
+        slug = f"custom_{slug}"
+
+    customs = get_custom_providers(db)
+    customs[slug] = name
+    save_custom_providers(db, customs)
+
+    # Parse custom fields from form
+    field_names = form.getlist("field_name")
+    field_types = form.getlist("field_type")
+    field_placeholders = form.getlist("field_placeholder")
+
+    if field_names and any(n.strip() for n in field_names):
+        fields = []
+        for i, fname in enumerate(field_names):
+            fname = fname.strip()
+            if not fname:
+                continue
+            fkey = f"custom_{slug}_{re.sub(r'[^a-z0-9]+', '_', fname.lower()).strip('_')}"
+            ftype = field_types[i].strip() if i < len(field_types) else "text"
+            if ftype not in ("text", "password"):
+                ftype = "text"
+            fplaceholder = field_placeholders[i].strip() if i < len(field_placeholders) else ""
+            fields.append({"key": fkey, "label": fname, "type": ftype, "placeholder": fplaceholder})
+        if fields:
+            save_custom_provider_fields(db, slug, fields)
+    else:
+        # Use default fields
+        defaults = _default_custom_fields(slug)
+        fields = [{"key": f[0], "label": f[1], "type": f[2], "placeholder": f[3]} for f in defaults]
+        save_custom_provider_fields(db, slug, fields)
+
+    db.commit()
+    return RedirectResponse("/admin/settings?success=1", status_code=302)
+
+
+@router.post("/settings/delete-provider/{slug}")
+async def admin_delete_custom_provider(
+    slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Delete a custom payment provider."""
+    if not _is_admin(request):
+        return RedirectResponse("/admin/login", status_code=302)
+
+    from app.payments import PROVIDERS, delete_custom_provider
+
+    if slug in PROVIDERS:
+        return RedirectResponse("/admin/settings", status_code=302)
+
+    delete_custom_provider(db, slug)
     db.commit()
     return RedirectResponse("/admin/settings?success=1", status_code=302)

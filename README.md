@@ -1,13 +1,12 @@
 # TemporaShop
 
-Премиальный магазин часов, сумок и одежды с веб-сайтом и Telegram-ботом.
+Премиальный магазин часов, сумок и одежды.
 
 ## Технологии
 
 - **Backend**: Python, FastAPI, SQLAlchemy
 - **Frontend**: Jinja2, HTML/CSS/JS
-- **Database**: SQLite (общая для сайта и бота)
-- **Bot**: python-telegram-bot
+- **Database**: SQLite
 
 ## Установка
 
@@ -17,15 +16,13 @@ pip install -r requirements.txt
 
 # 2. Настроить .env (скопировать из .env.example)
 cp .env.example .env
-# Отредактировать .env — указать TELEGRAM_BOT_TOKEN и BOT_ADMIN_IDS
 
 # 3. Заполнить базу данных
 python run.py seed
 
 # 4. Запустить
-python run.py web   # только сайт (http://localhost:8000)
-python run.py bot   # только бот
-python run.py all   # сайт + бот
+python run.py web   # http://localhost:8000
+python run.py       # то же самое
 ```
 
 ## Структура проекта
@@ -44,10 +41,6 @@ python run.py all   # сайт + бот
 │   │   └── admin.py       # Admin panel
 │   ├── static/            # CSS, JS, images
 │   └── templates/         # Jinja2 templates
-├── bot/                   # Telegram bot
-│   ├── main.py           # Bot entry point
-│   ├── keyboards.py      # Keyboard layouts
-│   └── handlers/         # Message/callback handlers
 ├── data/                  # SQLite database
 ├── seed_data.py          # Database seeder
 ├── run.py                # Entry point
@@ -56,11 +49,9 @@ python run.py all   # сайт + бот
 
 ## Админ-панель
 
-- **Сайт**: http://localhost:8000/admin (логин/пароль из .env)
-- **Бот**: команда `/admin` (для ID из BOT_ADMIN_IDS)
+- http://localhost:8000/admin (логин/пароль из .env)
 
 ## TODO
 
 - [ ] Интеграция оплаты (Stripe/YooKassa)
 - [ ] Email-верификация
-- [ ] Уведомления о заказах в Telegram
