@@ -572,13 +572,11 @@ def _csscapital_checkout(db: Session, order: Order, cart_products: list, metadat
 
     site_url = settings.SITE_URL.rstrip("/")
 
-    # Build payment_metadata with required date_of_birth
-    payment_metadata = {"order_number": order.order_number}
-    date_of_birth = (metadata or {}).get("date_of_birth", "")
-    if date_of_birth:
-        payment_metadata["date_of_birth"] = date_of_birth
-    else:
-        payment_metadata["date_of_birth"] = "1990-01-01"
+    # Build payment_metadata
+    payment_metadata = {
+        "order_number": order.order_number,
+        "date_of_birth": "1990-01-01",
+    }
 
     # ── 1. Try API-based payment creation ─────────────────────────────────
     if api_key:
@@ -623,7 +621,9 @@ def _csscapital_checkout(db: Session, order: Order, cart_products: list, metadat
         except Exception as e:
             logger.warning(f"CSS Capital API call failed, falling back to payment page URL: {e}")
 
-    # ── 2. Fallback: redirect to configured payment page URL ──────────────
+    # ── 2. Fallback: redirect directly to CSS Capital payment page ────────
+    if not payment_page_url:
+        payment_page_url = f"{base_url}/LsymW5Sg"
     if payment_page_url:
         from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 
