@@ -368,6 +368,13 @@ async def admin_settings_page(request: Request, db: Session = Depends(get_db)):
         provider_values[slug] = get_provider_settings(db, slug)
     ctx["provider_values"] = provider_values
 
+    # Load payment instructions for all providers
+    from app.payments import get_payment_instructions
+    payment_instructions_values = {}
+    for slug in all_providers:
+        payment_instructions_values[slug] = get_payment_instructions(db, slug)
+    ctx["payment_instructions_values"] = payment_instructions_values
+
     ctx["success"] = request.query_params.get("success", "")
     ctx["custom_providers"] = custom_providers
     return templates.TemplateResponse("admin/settings.html", ctx)
@@ -407,6 +414,11 @@ async def admin_settings_save(
         key = fdef[0]
         val = form.get(key, "")
         _set_setting(db, key, str(val).strip())
+
+    # Save payment instructions for the selected provider
+    instructions_key = f"{provider}_payment_instructions"
+    instructions_val = form.get(instructions_key, "")
+    _set_setting(db, instructions_key, str(instructions_val).strip())
 
     db.commit()
     return RedirectResponse("/admin/settings?success=1", status_code=302)

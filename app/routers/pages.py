@@ -193,16 +193,28 @@ async def cart_page(request: Request, db: Session = Depends(get_db)):
                 })
                 total += product.price * entry["quantity"]
 
-    # Get Stripe public key for frontend
+    # Get active payment provider info for frontend
     from app.models import SiteSetting
-    stripe_pk = ""
-    s = db.query(SiteSetting).filter(SiteSetting.key == "stripe_public_key").first()
-    if s and s.value:
-        stripe_pk = s.value
-    elif settings.STRIPE_PUBLIC_KEY:
-        stripe_pk = settings.STRIPE_PUBLIC_KEY
+    from app.payments import get_active_provider, get_provider_display_name
+    active_provider = get_active_provider(db)
+    provider_name = get_provider_display_name(db, active_provider)
 
-    ctx.update({"items": items, "total": total, "stripe_pk": stripe_pk, "is_guest": ctx["user"] is None})
+    stripe_pk = ""
+    if active_provider == "stripe":
+        s = db.query(SiteSetting).filter(SiteSetting.key == "stripe_public_key").first()
+        if s and s.value:
+            stripe_pk = s.value
+        elif settings.STRIPE_PUBLIC_KEY:
+            stripe_pk = settings.STRIPE_PUBLIC_KEY
+
+    ctx.update({
+        "items": items,
+        "total": total,
+        "stripe_pk": stripe_pk,
+        "is_guest": ctx["user"] is None,
+        "active_provider": active_provider,
+        "provider_name": provider_name,
+    })
     return templates.TemplateResponse("cart.html", ctx)
 
 
@@ -250,3 +262,23 @@ async def order_success(order_number: str, request: Request, db: Session = Depen
         db.refresh(order)
     ctx.update({"order": order})
     return templates.TemplateResponse("order_success.html", ctx)
+
+
+@router.get("/payment/{order_number}")
+async def payment_page(order_number: str, request: Request, db: Session = Depends(get_db)):
+    ctx = _base_ctx(request, db)
+    from app.models import Order
+    from app.payments import get_active_provider, get_payment_instructions, get_provider_display_name, sync_order_status
+
+    order = db.query(Order).filter(Order.order_number == order_number).first()
+    if order and order.status != "paid":
+        sync_order_status(db, order)
+        db.refresh(order)
+
+    provider = get_active_provider(db)
+    ctx.update({
+        "order": order,
+        "payment_instructions": get_payment_instructions(db, provider),
+        "provider_name": get_provider_display_name(db, provider),
+    })
+    return templates.TemplateResponse("payment.html", ctx)

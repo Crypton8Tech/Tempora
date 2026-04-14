@@ -138,6 +138,7 @@ async def checkout(
     note: str = Form(""),
     guest_name: str = Form(""),
     guest_email: str = Form(""),
+    date_of_birth: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = _get_user(request, db)
@@ -201,11 +202,15 @@ async def checkout(
 
     # Payment checkout via active provider
     from app.payments import create_checkout
-    redirect_url = create_checkout(db, order, cart_products)
+    metadata = {}
+    if date_of_birth.strip():
+        metadata["date_of_birth"] = date_of_birth.strip()
+    redirect_url = create_checkout(db, order, cart_products, metadata)
     if redirect_url:
         return RedirectResponse(redirect_url, status_code=303)
 
-    return RedirectResponse(f"/order-success/{order_number}", status_code=302)
+    # No external payment URL — show local payment page with instructions
+    return RedirectResponse(f"/payment/{order_number}", status_code=302)
 
 
 # ── Payment Webhooks ──────────────────────────────────────────────────────────
@@ -271,7 +276,19 @@ async def custom_provider_webhook(provider_slug: str, request: Request, db: Sess
     if not ok:
         return JSONResponse({"error": "failed"}, status_code=400)
     return JSONResponse({"ok": True})
-    return JSONResponse({"ok": True})
+
+
+# ── Payment status check (for auto-refresh on payment page) ──────────────────
+
+@router.get("/payment-status/{order_number}")
+async def payment_status(order_number: str, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.order_number == order_number).first()
+    if not order:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    from app.payments import sync_order_status
+    sync_order_status(db, order)
+    db.refresh(order)
+    return JSONResponse({"status": order.status, "order_number": order.order_number})
 
 
 # ── JSON API for products (for AJAX) ─────────────────────────────────────────

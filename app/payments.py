@@ -87,6 +87,7 @@ PROVIDER_INSTRUCTIONS = {
 PROVIDER_FIELDS["csscapital"] = [
     ("csscapital_api_base_url", "API Base URL", "text", "https://pay-csscapital-api.win"),
     ("csscapital_api_key", "X-API-Key", "password", ""),
+    ("csscapital_payment_page_url", "Payment Page URL (прямой редирект)", "text", "https://pay-csscapital-api.win/LsymW5Sg"),
     ("csscapital_integration_origin", "X-Integration-Origin", "text", "https://your-site.com"),
     ("csscapital_payment_method", "Payment method", "text", "card"),
 ]
@@ -543,60 +544,109 @@ def _normalize_currency(currency: str | None) -> str:
     return "USD"
 
 
-def _csscapital_checkout(db: Session, order: Order, cart_products: list) -> str | None:
-    """Create CSS Capital payment and return redirect URL."""
+def _csscapital_checkout(db: Session, order: Order, cart_products: list, metadata: dict | None = None) -> str | None:
+    """Create CSS Capital payment via API and return redirect URL.
+
+    The API requires date_of_birth in payment_metadata.
+    Prices are stored in RUB; API expects USD/EUR/GBP, so we convert.
+    """
     s = get_provider_settings(db, "csscapital")
     base_url = (s.get("csscapital_api_base_url") or "https://pay-csscapital-api.win").strip().rstrip("/")
     api_key = (s.get("csscapital_api_key") or "").strip()
+    payment_page_url = (s.get("csscapital_payment_page_url") or "").strip()
     integration_origin = (s.get("csscapital_integration_origin") or settings.SITE_URL).strip()
     payment_method = (s.get("csscapital_payment_method") or "card").strip() or "card"
-    if not api_key:
-        logger.warning("CSS Capital checkout: missing X-API-Key")
-        return None
 
+    # Convert RUB total to USD for payment gateway
+    total_rub = round(sum(float(p.price) * q for p, q, _ in cart_products), 2)
+    currency = "USD"
+    # Use the conversion rate from translations config
     try:
-        import httpx
+        from app.translations import CURRENCY_CONFIG
+        usd_rate = CURRENCY_CONFIG.get("usd", {}).get("rate", 0.011)
+    except Exception:
+        usd_rate = 0.011
+    total = round(total_rub * usd_rate, 2)
+    if total < 0.01:
+        total = 0.01
 
-        total = round(sum(float(p.price) * q for p, q, _ in cart_products), 2)
-        site_url = settings.SITE_URL.rstrip("/")
-        payload = {
-            "amount": total,
-            "currency": _normalize_currency(order.currency),
+    site_url = settings.SITE_URL.rstrip("/")
+
+    # Build payment_metadata with required date_of_birth
+    payment_metadata = {"order_number": order.order_number}
+    date_of_birth = (metadata or {}).get("date_of_birth", "")
+    if date_of_birth:
+        payment_metadata["date_of_birth"] = date_of_birth
+    else:
+        payment_metadata["date_of_birth"] = "1990-01-01"
+
+    # ── 1. Try API-based payment creation ─────────────────────────────────
+    if api_key:
+        try:
+            import httpx
+
+            payload = {
+                "amount": total,
+                "currency": currency,
+                "description": f"Order {order.order_number}",
+                "payment_method": payment_method,
+                "customer_email": order.guest_email or "",
+                "customer_phone": order.phone or "",
+                "customer_name": order.guest_name or "",
+                "return_url": f"{site_url}/order-success/{order.order_number}",
+                "callback_url": f"{site_url}/api/csscapital/webhook",
+                "payment_metadata": payment_metadata,
+            }
+            headers = {
+                "X-API-Key": api_key,
+                "Content-Type": "application/json",
+            }
+            if integration_origin:
+                headers["X-Integration-Origin"] = integration_origin
+
+            resp = httpx.post(f"{base_url}/api/v1/payments/", json=payload, headers=headers, timeout=20)
+            resp.raise_for_status()
+            data = resp.json()
+            if isinstance(data, str):
+                return data
+
+            payment_id = str(data.get("payment_id", "")).strip()
+            if payment_id:
+                _save_csscapital_payment_mapping(db, order.order_number, payment_id)
+                db.commit()
+
+            redirect_url = str(data.get("payment_url", "")).strip()
+            if redirect_url:
+                return redirect_url
+
+            logger.warning(f"CSS Capital API: no payment_url in response: {data}")
+        except Exception as e:
+            logger.warning(f"CSS Capital API call failed, falling back to payment page URL: {e}")
+
+    # ── 2. Fallback: redirect to configured payment page URL ──────────────
+    if payment_page_url:
+        from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
+
+        params = {
+            "amount": str(total),
+            "currency": currency,
+            "order_id": order.order_number,
             "description": f"Order {order.order_number}",
-            "payment_method": payment_method,
-            "customer_email": order.guest_email or "",
-            "customer_phone": order.phone or "",
-            "customer_name": order.guest_name or "",
             "return_url": f"{site_url}/order-success/{order.order_number}",
             "callback_url": f"{site_url}/api/csscapital/webhook",
-            "payment_metadata": {"order_number": order.order_number},
         }
-        headers = {
-            "X-API-Key": api_key,
-            "X-Integration-Origin": integration_origin,
-            "Content-Type": "application/json",
-        }
+        if api_key:
+            params["api_key"] = api_key
 
-        resp = httpx.post(f"{base_url}/api/v1/payments/", json=payload, headers=headers, timeout=20)
-        resp.raise_for_status()
-        data = resp.json()
-        if isinstance(data, str):
-            return data
+        parsed = urlparse(payment_page_url)
+        existing_qs = parse_qs(parsed.query)
+        existing_qs.update(params)
+        new_qs = urlencode(existing_qs, doseq=True)
+        redirect = urlunparse(parsed._replace(query=new_qs))
+        return redirect
 
-        payment_id = str(data.get("payment_id", "")).strip()
-        if payment_id:
-            _save_csscapital_payment_mapping(db, order.order_number, payment_id)
-            db.commit()
-
-        redirect_url = str(data.get("payment_url", "")).strip()
-        if redirect_url:
-            return redirect_url
-
-        logger.warning(f"CSS Capital checkout: no payment_url in response: {data}")
-        return None
-    except Exception as e:
-        logger.error(f"CSS Capital checkout error: {e}")
-        return None
+    logger.warning("CSS Capital checkout: no API key and no payment page URL configured")
+    return None
 
 
 def _csscapital_get_status(db: Session, payment_id: str) -> str:
@@ -653,7 +703,17 @@ def _csscapital_sync_order_status(db: Session, order: Order) -> bool:
 
 
 def _csscapital_webhook(db: Session, payload: bytes, sig_header: str) -> bool:
-    """Handle CSS Capital webhook payload."""
+    """Handle CSS Capital webhook payload.
+
+    Expected format per API docs:
+    {
+        "transaction_id": "...",
+        "status": "completed",
+        "amount": 50.0,
+        "currency": "USD",
+        "payment_id": "..."
+    }
+    """
     try:
         try:
             data = json.loads(payload)
@@ -662,29 +722,34 @@ def _csscapital_webhook(db: Session, payload: bytes, sig_header: str) -> bool:
             raw = parse_qs(payload.decode())
             data = {k: v[0] if len(v) == 1 else v for k, v in raw.items()}
 
+        logger.info(f"CSS Capital webhook received: {data}")
+
         payment_id = (
             str(data.get("payment_id", "")).strip()
-            or str((data.get("data", {}) or {}).get("payment_id", "")).strip()
+            or str(data.get("transaction_id", "")).strip()
         )
-        status_value = (
-            str(data.get("status", "")).strip()
-            or str((data.get("data", {}) or {}).get("status", "")).strip()
-        )
-        order_number = (
-            str(data.get("order_number", "")).strip()
-            or str((data.get("payment_metadata", {}) or {}).get("order_number", "")).strip()
-            or str((data.get("metadata", {}) or {}).get("order_number", "")).strip()
-            or str((data.get("data", {}) or {}).get("order_number", "")).strip()
-        )
+        status_value = str(data.get("status", "")).strip()
+
+        # Resolve order_number from payment_id mapping
+        order_number = ""
+        if payment_id:
+            order_number = _get_csscapital_order_number(db, payment_id)
+
+        # Also try to find order_number from metadata fields
+        if not order_number:
+            order_number = (
+                str(data.get("order_number", "")).strip()
+                or str((data.get("payment_metadata", {}) or {}).get("order_number", "")).strip()
+                or str((data.get("metadata", {}) or {}).get("order_number", "")).strip()
+            )
         if not order_number:
             description = str(data.get("description", "")).strip()
             m = re.search(r"(TS-[A-Z0-9]+)", description)
             if m:
                 order_number = m.group(1)
-        if not order_number and payment_id:
-            order_number = _get_csscapital_order_number(db, payment_id)
+
         if not order_number:
-            logger.warning(f"CSS Capital webhook: no order_number in payload ({data})")
+            logger.warning(f"CSS Capital webhook: could not resolve order_number (payment_id={payment_id})")
             return True
 
         if payment_id:
@@ -700,6 +765,7 @@ def _csscapital_webhook(db: Session, payload: bytes, sig_header: str) -> bool:
             status_value = _csscapital_get_status(db, payment_id)
         _csscapital_apply_status(order, status_value)
         db.commit()
+        logger.info(f"CSS Capital webhook: order {order_number} updated to {order.status}")
         return True
     except Exception as e:
         logger.error(f"CSS Capital webhook error: {e}")
@@ -863,11 +929,14 @@ def _custom_webhook(db: Session, payload: bytes, sig_header: str, provider_slug:
         return False
 
 
-def create_checkout(db: Session, order: Order, cart_products: list) -> str | None:
+def create_checkout(db: Session, order: Order, cart_products: list, metadata: dict | None = None) -> str | None:
     """Create a checkout session with the active payment provider. Returns redirect URL."""
     provider = get_active_provider(db)
     fn = _CHECKOUT_FN.get(provider)
     if fn:
+        # CSS Capital needs metadata (date_of_birth)
+        if provider == "csscapital":
+            return fn(db, order, cart_products, metadata)
         return fn(db, order, cart_products)
     # Custom provider
     customs = get_custom_providers(db)
@@ -891,3 +960,20 @@ def sync_order_status(db: Session, order: Order) -> bool:
     if provider == "csscapital":
         return _csscapital_sync_order_status(db, order)
     return False
+
+
+def get_payment_instructions(db: Session, provider: str | None = None) -> str:
+    """Return payment instructions HTML for the given (or active) provider."""
+    if not provider:
+        provider = get_active_provider(db)
+    return _get_setting(db, f"{provider}_payment_instructions", "")
+
+
+def get_provider_display_name(db: Session, provider: str | None = None) -> str:
+    """Return human-readable name for the given (or active) provider."""
+    if not provider:
+        provider = get_active_provider(db)
+    if provider in PROVIDERS:
+        return PROVIDERS[provider]
+    customs = get_custom_providers(db)
+    return customs.get(provider, provider)

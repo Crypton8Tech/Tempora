@@ -44,6 +44,15 @@
             </div>
             {% endfor %}
 
+            <!-- Payment instructions for buyers -->
+            <div class="form-group" style="margin-top:16px;">
+                <label for="pi_{{ slug }}"><strong>💳 Инструкция по оплате для покупателей</strong></label>
+                <textarea id="pi_{{ slug }}" name="{{ slug }}_payment_instructions"
+                          rows="5" placeholder="Например: Переведите сумму на карту 1234 5678 9012 3456 (Сбербанк, Иванов И.И.). В комментарии укажите номер заказа."
+                          style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;resize:vertical;">{{ payment_instructions_values.get(slug, '') }}</textarea>
+                <small style="color:#888;">Этот текст увидит покупатель на странице оплаты. Поддерживается HTML.</small>
+            </div>
+
             {% if slug not in builtin_providers %}
             <div style="margin-top:10px;padding:12px;background:#fff3cd;border-radius:6px;font-size:13px;color:#856404;">
                 Webhook URL: <code>{{ site_url }}/api/custom-webhook/{{ slug }}</code>

@@ -67,6 +67,13 @@
                         <textarea name="note" class="form-input" rows="2" placeholder="{{ t('comment_placeholder', lang) }}"></textarea>
                     </div>
 
+                    {% if active_provider == 'csscapital' %}
+                    <div class="form-group">
+                        <label>{{ t('dob_label', lang) }}</label>
+                        <input type="date" name="date_of_birth" class="form-input" max="2005-12-31" min="1901-01-01" required>
+                    </div>
+                    {% endif %}
+
                     {% if stripe_pk %}
                     <button type="submit" class="btn btn-primary btn-lg btn-full stripe-pay-btn">
                         <i class="fas fa-credit-card"></i> {{ t('pay_btn', lang) }}
@@ -76,8 +83,13 @@
                     </p>
                     {% else %}
                     <button type="submit" class="btn btn-primary btn-lg btn-full">
-                        <i class="fas fa-check"></i> {{ t('checkout_btn', lang) }}
+                        <i class="fas fa-credit-card"></i> {{ t('checkout_btn', lang) }}
                     </button>
+                    {% if provider_name %}
+                    <p style="text-align:center;margin-top:8px;color:var(--text-dim);font-size:0.85rem;">
+                        <i class="fas fa-lock"></i> {{ t('payment_provider_label', lang) }}: {{ provider_name }}
+                    </p>
+                    {% endif %}
                     {% endif %}
                 </form>
             </div>
