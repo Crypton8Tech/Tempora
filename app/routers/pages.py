@@ -244,5 +244,9 @@ async def order_success(order_number: str, request: Request, db: Session = Depen
     ctx = _base_ctx(request, db)
     from app.models import Order
     order = db.query(Order).filter(Order.order_number == order_number).first()
+    if order and order.status != "paid":
+        from app.payments import sync_order_status
+        sync_order_status(db, order)
+        db.refresh(order)
     ctx.update({"order": order})
     return templates.TemplateResponse("order_success.html", ctx)

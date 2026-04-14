@@ -251,6 +251,17 @@ async def paypal_webhook(request: Request, db: Session = Depends(get_db)):
     return JSONResponse({"ok": True})
 
 
+@router.post("/csscapital/webhook")
+async def csscapital_webhook(request: Request, db: Session = Depends(get_db)):
+    from app.payments import handle_webhook
+    payload = await request.body()
+    sig_header = request.headers.get("x-signature", request.headers.get("x-webhook-signature", ""))
+    ok = handle_webhook("csscapital", db, payload, sig_header)
+    if not ok:
+        return JSONResponse({"error": "failed"}, status_code=400)
+    return JSONResponse({"ok": True})
+
+
 @router.post("/custom-webhook/{provider_slug}")
 async def custom_provider_webhook(provider_slug: str, request: Request, db: Session = Depends(get_db)):
     from app.payments import handle_webhook

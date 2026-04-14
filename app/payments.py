@@ -1,12 +1,13 @@
 """Payment providers abstraction layer.
 
-Built-in providers: stripe, yookassa, cloudpayments, paypal.
+Built-in providers: stripe, yookassa, cloudpayments, paypal, csscapital.
 Custom providers can be added through the admin panel.
 Each provider implements create_checkout() and handle_webhook().
 """
 
 import json
 import logging
+import re
 from sqlalchemy.orm import Session
 from app.models import SiteSetting, Order
 from app.config import settings
@@ -18,6 +19,7 @@ PROVIDERS = {
     "yookassa": "YooKassa",
     "cloudpayments": "CloudPayments",
     "paypal": "PayPal",
+    "csscapital": "CSS Capital",
 }
 
 # Fields each provider needs (key in SiteSetting → label for admin form)
@@ -80,6 +82,57 @@ PROVIDER_INSTRUCTIONS = {
         ],
     },
 }
+
+# CSS Capital provider (configured explicitly to avoid generic field mapping issues)
+PROVIDER_FIELDS["csscapital"] = [
+    ("csscapital_api_base_url", "API Base URL", "text", "https://pay-csscapital-api.win"),
+    ("csscapital_api_key", "X-API-Key", "password", ""),
+    ("csscapital_integration_origin", "X-Integration-Origin", "text", "https://your-site.com"),
+    ("csscapital_payment_method", "Payment method", "text", "card"),
+]
+
+PROVIDER_INSTRUCTIONS["csscapital"] = {
+    "title": "How to configure CSS Capital",
+    "steps": [
+        "Paste your <strong>X-API-Key</strong> from the provider dashboard",
+        "Set API Base URL to <code>https://pay-csscapital-api.win</code> (or your environment URL)",
+        "Set <strong>X-Integration-Origin</strong> to your site domain (for example: <code>{site_url}</code>)",
+        'Set callback URL (if required): <code>{site_url}/api/csscapital/webhook</code>',
+    ],
+}
+
+
+def _upsert_setting(db: Session, key: str, value: str):
+    """Create/update a key-value setting."""
+    row = db.query(SiteSetting).filter(SiteSetting.key == key).first()
+    if row:
+        row.value = value
+    else:
+        db.add(SiteSetting(key=key, value=value))
+
+
+def _get_setting(db: Session, key: str, default: str = "") -> str:
+    """Get key-value setting."""
+    row = db.query(SiteSetting).filter(SiteSetting.key == key).first()
+    if not row or row.value is None:
+        return default
+    return row.value
+
+
+def _save_csscapital_payment_mapping(db: Session, order_number: str, payment_id: str):
+    """Persist order/payment relation to resolve webhooks and status checks."""
+    _upsert_setting(db, f"csscapital_order_payment_{order_number}", payment_id)
+    _upsert_setting(db, f"csscapital_payment_order_{payment_id}", order_number)
+
+
+def _get_csscapital_payment_id(db: Session, order_number: str) -> str:
+    """Get payment_id by order number."""
+    return _get_setting(db, f"csscapital_order_payment_{order_number}", "")
+
+
+def _get_csscapital_order_number(db: Session, payment_id: str) -> str:
+    """Get order number by payment_id."""
+    return _get_setting(db, f"csscapital_payment_order_{payment_id}", "")
 
 
 def get_active_provider(db: Session) -> str:
@@ -480,11 +533,185 @@ def _paypal_webhook(db: Session, payload: bytes, sig_header: str) -> bool:
 
 # ── Dispatcher ────────────────────────────────────────────────────────────────
 
+def _normalize_currency(currency: str | None) -> str:
+    """Normalize order currency code to ISO-like uppercase value."""
+    value = (currency or "").strip().upper()
+    if not value:
+        return "USD"
+    if len(value) == 3 and value.isalpha():
+        return value
+    return "USD"
+
+
+def _csscapital_checkout(db: Session, order: Order, cart_products: list) -> str | None:
+    """Create CSS Capital payment and return redirect URL."""
+    s = get_provider_settings(db, "csscapital")
+    base_url = (s.get("csscapital_api_base_url") or "https://pay-csscapital-api.win").strip().rstrip("/")
+    api_key = (s.get("csscapital_api_key") or "").strip()
+    integration_origin = (s.get("csscapital_integration_origin") or settings.SITE_URL).strip()
+    payment_method = (s.get("csscapital_payment_method") or "card").strip() or "card"
+    if not api_key:
+        logger.warning("CSS Capital checkout: missing X-API-Key")
+        return None
+
+    try:
+        import httpx
+
+        total = round(sum(float(p.price) * q for p, q, _ in cart_products), 2)
+        site_url = settings.SITE_URL.rstrip("/")
+        payload = {
+            "amount": total,
+            "currency": _normalize_currency(order.currency),
+            "description": f"Order {order.order_number}",
+            "payment_method": payment_method,
+            "customer_email": order.guest_email or "",
+            "customer_phone": order.phone or "",
+            "customer_name": order.guest_name or "",
+            "return_url": f"{site_url}/order-success/{order.order_number}",
+            "callback_url": f"{site_url}/api/csscapital/webhook",
+            "payment_metadata": {"order_number": order.order_number},
+        }
+        headers = {
+            "X-API-Key": api_key,
+            "X-Integration-Origin": integration_origin,
+            "Content-Type": "application/json",
+        }
+
+        resp = httpx.post(f"{base_url}/api/v1/payments/", json=payload, headers=headers, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, str):
+            return data
+
+        payment_id = str(data.get("payment_id", "")).strip()
+        if payment_id:
+            _save_csscapital_payment_mapping(db, order.order_number, payment_id)
+            db.commit()
+
+        redirect_url = str(data.get("payment_url", "")).strip()
+        if redirect_url:
+            return redirect_url
+
+        logger.warning(f"CSS Capital checkout: no payment_url in response: {data}")
+        return None
+    except Exception as e:
+        logger.error(f"CSS Capital checkout error: {e}")
+        return None
+
+
+def _csscapital_get_status(db: Session, payment_id: str) -> str:
+    """Fetch CSS Capital payment status for a given payment_id."""
+    s = get_provider_settings(db, "csscapital")
+    base_url = (s.get("csscapital_api_base_url") or "https://pay-csscapital-api.win").strip().rstrip("/")
+    api_key = (s.get("csscapital_api_key") or "").strip()
+    if not payment_id:
+        return ""
+
+    try:
+        import httpx
+
+        headers = {}
+        if api_key:
+            headers["X-API-Key"] = api_key
+        resp = httpx.get(f"{base_url}/api/v1/payments/{payment_id}/status", headers=headers, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, str):
+            return data.strip().lower()
+        if isinstance(data, dict):
+            return str(data.get("status", "")).strip().lower()
+        return str(data).strip().lower()
+    except Exception as e:
+        logger.error(f"CSS Capital status check error ({payment_id}): {e}")
+        return ""
+
+
+def _csscapital_apply_status(order: Order, status_value: str):
+    """Map provider status to local order status."""
+    status_lower = (status_value or "").strip().lower()
+    if status_lower == "completed":
+        order.status = "paid"
+    elif status_lower == "failed":
+        order.status = "cancelled"
+
+
+def _csscapital_sync_order_status(db: Session, order: Order) -> bool:
+    """Sync local order status from CSS Capital by stored payment_id."""
+    payment_id = _get_csscapital_payment_id(db, order.order_number)
+    if not payment_id:
+        return False
+    status_value = _csscapital_get_status(db, payment_id)
+    if not status_value:
+        return False
+
+    old_status = order.status
+    _csscapital_apply_status(order, status_value)
+    if order.status != old_status:
+        db.commit()
+        return True
+    return False
+
+
+def _csscapital_webhook(db: Session, payload: bytes, sig_header: str) -> bool:
+    """Handle CSS Capital webhook payload."""
+    try:
+        try:
+            data = json.loads(payload)
+        except (json.JSONDecodeError, ValueError):
+            from urllib.parse import parse_qs
+            raw = parse_qs(payload.decode())
+            data = {k: v[0] if len(v) == 1 else v for k, v in raw.items()}
+
+        payment_id = (
+            str(data.get("payment_id", "")).strip()
+            or str((data.get("data", {}) or {}).get("payment_id", "")).strip()
+        )
+        status_value = (
+            str(data.get("status", "")).strip()
+            or str((data.get("data", {}) or {}).get("status", "")).strip()
+        )
+        order_number = (
+            str(data.get("order_number", "")).strip()
+            or str((data.get("payment_metadata", {}) or {}).get("order_number", "")).strip()
+            or str((data.get("metadata", {}) or {}).get("order_number", "")).strip()
+            or str((data.get("data", {}) or {}).get("order_number", "")).strip()
+        )
+        if not order_number:
+            description = str(data.get("description", "")).strip()
+            m = re.search(r"(TS-[A-Z0-9]+)", description)
+            if m:
+                order_number = m.group(1)
+        if not order_number and payment_id:
+            order_number = _get_csscapital_order_number(db, payment_id)
+        if not order_number:
+            logger.warning(f"CSS Capital webhook: no order_number in payload ({data})")
+            return True
+
+        if payment_id:
+            _save_csscapital_payment_mapping(db, order_number, payment_id)
+
+        order = db.query(Order).filter(Order.order_number == order_number).first()
+        if not order:
+            logger.warning(f"CSS Capital webhook: order {order_number} not found")
+            db.commit()
+            return True
+
+        if not status_value and payment_id:
+            status_value = _csscapital_get_status(db, payment_id)
+        _csscapital_apply_status(order, status_value)
+        db.commit()
+        return True
+    except Exception as e:
+        logger.error(f"CSS Capital webhook error: {e}")
+        return False
+
+
 _CHECKOUT_FN = {
     "stripe": _stripe_checkout,
     "yookassa": _yookassa_checkout,
     "cloudpayments": _cloudpayments_checkout,
     "paypal": _paypal_checkout,
+    "csscapital": _csscapital_checkout,
 }
 
 _WEBHOOK_FN = {
@@ -492,6 +719,7 @@ _WEBHOOK_FN = {
     "yookassa": _yookassa_webhook,
     "cloudpayments": _cloudpayments_webhook,
     "paypal": _paypal_webhook,
+    "csscapital": _csscapital_webhook,
 }
 
 
@@ -655,3 +883,11 @@ def handle_webhook(provider: str, db: Session, payload: bytes, sig_header: str) 
         return fn(db, payload, sig_header)
     # Custom provider
     return _custom_webhook(db, payload, sig_header, provider)
+
+
+def sync_order_status(db: Session, order: Order) -> bool:
+    """Try to sync order status for providers that require explicit status polling."""
+    provider = get_active_provider(db)
+    if provider == "csscapital":
+        return _csscapital_sync_order_status(db, order)
+    return False
