@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}{{ t('quick_order_title', lang) }} — {{ loc(product, 'name', lang) }}{% endblock %}
+
+{% block content %}
+<section class="section" style="padding-top: 60px; padding-bottom: 80px;">
+  <div class="container" style="max-width: 620px;">
+
+    <!-- Back link -->
+    <a href="/product/{{ product.sku }}" class="btn btn-outline" style="margin-bottom: 28px; display: inline-flex; align-items: center; gap: 8px;">
+      <i class="fas fa-arrow-left"></i> {{ t('back', lang) }}
+    </a>
+
+    <h1 class="page-title animate-fade-up" style="margin-bottom: 32px;">
+      {{ t('quick_order_title', lang) }}
+    </h1>
+
+    <!-- Product summary card -->
+    <div class="cart-item animate-fade-up delay-1"
+         style="display: flex; align-items: center; gap: 20px; margin-bottom: 36px;
+                background: var(--surface); border: 1px solid var(--border);
+                border-radius: 16px; padding: 20px;">
+      <div style="flex-shrink: 0;">
+        <img src="{{ product.images[0].url if product.images else '/static/uploads/placeholder.svg' }}"
+             alt="{{ loc(product, 'name', lang) }}"
+             style="width: 88px; height: 88px; object-fit: cover; border-radius: 10px;">
+      </div>
+      <div style="flex: 1; min-width: 0;">
+        <span class="product-brand" style="font-size: 0.78rem; letter-spacing: .08em; color: var(--gold); text-transform: uppercase;">
+          {{ product.brand }}
+        </span>
+        <h3 style="margin: 4px 0 8px; font-size: 1.05rem; font-weight: 600; line-height: 1.3;">
+          {{ loc(product, 'name', lang) }}
+        </h3>
+        <strong class="product-price" style="font-size: 1.15rem; color: var(--gold);">
+          {{ format_price(product.price, currency) }}
+        </strong>
+      </div>
+    </div>
+
+    <!-- Order form -->
+    <form action="/api/quick-order" method="post" class="checkout-form animate-fade-up delay-2">
+      <input type="hidden" name="product_id" value="{{ product.id }}">
+
+      <h4 class="checkout-section-title" style="margin-bottom: 20px;">
+        {{ t('delivery_title', lang) }}
+      </h4>
+
+      <!-- Name -->
+      <div class="form-group">
+        <label>{{ t('name_label', lang) }}</label>
+        <input type="text" name="guest_name" class="form-input"
+               placeholder="{{ t('name_placeholder', lang) }}" required>
+      </div>
+
+      <!-- Email -->
+      <div class="form-group">
+        <label>{{ t('email_label', lang) }}</label>
+        <input type="email" name="guest_email" class="form-input"
+               placeholder="{{ t('email_placeholder', lang) }}" required>
+      </div>
+
+      <!-- Phone -->
+      <div class="form-group">
+        <label>{{ t('phone_label', lang) }}</label>
+        <input type="tel" name="phone" class="form-input"
+               placeholder="{{ t('phone_placeholder', lang) }}" required>
+      </div>
+
+      <!-- Address -->
+      <div class="form-group">
+        <label>{{ t('address_label', lang) }}</label>
+        <textarea name="address" class="form-input" rows="3"
+                  placeholder="{{ t('address_placeholder', lang) }}" required></textarea>
+      </div>
+
+      <!-- Quantity -->
+      <div class="form-group">
+        <label>{{ t('qty_label', lang) }}</label>
+        <input type="number" name="quantity" class="form-input"
+               value="1" min="1" max="10" style="max-width: 120px;">
+      </div>
+
+      <!-- Comment -->
+      <div class="form-group">
+        <label>{{ t('comment_label', lang) }}</label>
+        <textarea name="note" class="form-input" rows="2"
+                  placeholder="{{ t('comment_placeholder', lang) }}"></textarea>
+      </div>
+
+      <!-- Submit -->
+      {% if stripe_pk %}
+      <button type="submit" class="btn btn-primary btn-lg btn-full" style="margin-top: 8px;">
+        <i class="fas fa-credit-card"></i> {{ t('pay_btn', lang) }}
+      </button>
+      <p style="text-align: center; margin-top: 10px; color: var(--text-dim); font-size: 0.84rem;">
+        <i class="fas fa-lock"></i> {{ t('stripe_secure', lang) }}
+      </p>
+      {% else %}
+      <button type="submit" class="btn btn-primary btn-lg btn-full" style="margin-top: 8px;">
+        <i class="fas fa-check"></i> {{ t('checkout_btn', lang) }}
+      </button>
+      {% endif %}
+
+    </form>
+
+  </div>
+</section>
+{% endblock %}

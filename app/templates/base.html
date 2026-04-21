@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="{{ lang|default('en') }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TemporaShop{% endblock %} — Replica Boutique</title>
+    <link rel="icon" type="image/png" href="/static/images/logo.png">
+    <link rel="apple-touch-icon" href="/static/images/logo.png">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <!-- Header -->
+    <header class="site-header" id="siteHeader">
+        <div class="header-inner">
+            <a href="/" class="logo-link">
+                <img src="/static/images/logo.svg" alt="TemporaShop" class="logo-img"
+                     onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+                <span class="logo-text" style="display:none">TEMPORA</span>
+            </a>
+
+            <nav class="main-nav" id="mainNav">
+                <a href="/"        class="nav-link">{{ t('nav_home',    lang) }}</a>
+                <a href="/catalog" class="nav-link">{{ t('nav_catalog', lang) }}</a>
+                <a href="/help"    class="nav-link">{{ t('nav_help',    lang) }}</a>
+                <a href="/track"   class="nav-link">{{ t('nav_track',   lang) }}</a>
+            </nav>
+
+            <div class="header-actions">
+
+                <!-- Language switcher (6 languages) -->
+                <div class="switcher lang-switcher">
+                    <a href="/set-lang/en" class="sw-btn {% if lang == 'en' %}active{% endif %}">EN</a>
+                    <a href="/set-lang/de" class="sw-btn {% if lang == 'de' %}active{% endif %}">DE</a>
+                    <a href="/set-lang/fr" class="sw-btn {% if lang == 'fr' %}active{% endif %}">FR</a>
+                    <a href="/set-lang/it" class="sw-btn {% if lang == 'it' %}active{% endif %}">IT</a>
+                    <a href="/set-lang/es" class="sw-btn {% if lang == 'es' %}active{% endif %}">ES</a>
+                    <a href="/set-lang/ru" class="sw-btn {% if lang == 'ru' %}active{% endif %}">RU</a>
+                </div>
+
+                <!-- Currency switcher (no RUB) -->
+                <div class="switcher currency-switcher">
+                    <a href="/set-currency/eur" class="sw-btn {% if currency == 'eur' %}active{% endif %}">€</a>
+                    <a href="/set-currency/usd" class="sw-btn {% if currency == 'usd' %}active{% endif %}">$</a>
+                    <a href="/set-currency/gbp" class="sw-btn {% if currency == 'gbp' %}active{% endif %}">£</a>
+                    <a href="/set-currency/chf" class="sw-btn {% if currency == 'chf' %}active{% endif %}">₣</a>
+                </div>
+
+                <!-- Cart -->
+                <a href="/cart" class="cart-btn" title="{{ t('nav_cart', lang) }}">
+                    <i class="fas fa-shopping-bag"></i>
+                    {% if cart_count and cart_count > 0 %}
+                    <span class="cart-badge">{{ cart_count }}</span>
+                    {% endif %}
+                </a>
+
+                <!-- User -->
+                {% if user %}
+                <a href="/account" class="nav-link account-link">
+                    <i class="fas fa-user"></i> {{ user.name }}
+                </a>
+                <a href="/auth/logout" class="nav-link logout-link" title="{{ t('nav_sign_out', lang) }}">
+                    <i class="fas fa-sign-out-alt"></i>
+                </a>
+                {% else %}
+                <a href="/auth/login" class="nav-link login-link">
+                    <i class="fas fa-sign-in-alt"></i> {{ t('nav_sign_in', lang) }}
+                </a>
+                {% endif %}
+
+                <button class="burger-btn" id="burgerBtn" aria-label="Menu">
+                    <span></span><span></span><span></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Mobile menu overlay -->
+    <div class="mobile-menu-overlay" id="mobileOverlay"></div>
+    <div class="mobile-menu" id="mobileMenu">
+        <a href="/"        class="mobile-link">{{ t('nav_home',    lang) }}</a>
+        <a href="/catalog" class="mobile-link">{{ t('nav_catalog', lang) }}</a>
+        <a href="/cart"    class="mobile-link">{{ t('nav_cart',    lang) }}</a>
+        <a href="/help"    class="mobile-link">{{ t('nav_help',    lang) }}</a>
+        <a href="/track"   class="mobile-link">{{ t('nav_track',   lang) }}</a>
+        {% if user %}
+        <a href="/account"      class="mobile-link">{{ t('nav_account',  lang) }}</a>
+        <a href="/auth/logout"  class="mobile-link">{{ t('nav_sign_out', lang) }}</a>
+        {% else %}
+        <a href="/auth/login"    class="mobile-link">{{ t('nav_sign_in',  lang) }}</a>
+        <a href="/auth/register" class="mobile-link">{{ t('nav_register', lang) }}</a>
+        {% endif %}
+
+        <div class="mobile-switchers">
+            <!-- Language switcher (mobile) -->
+            <div class="switcher lang-switcher">
+                <a href="/set-lang/en" class="sw-btn {% if lang == 'en' %}active{% endif %}">EN</a>
+                <a href="/set-lang/de" class="sw-btn {% if lang == 'de' %}active{% endif %}">DE</a>
+                <a href="/set-lang/fr" class="sw-btn {% if lang == 'fr' %}active{% endif %}">FR</a>
+                <a href="/set-lang/it" class="sw-btn {% if lang == 'it' %}active{% endif %}">IT</a>
+                <a href="/set-lang/es" class="sw-btn {% if lang == 'es' %}active{% endif %}">ES</a>
+                <a href="/set-lang/ru" class="sw-btn {% if lang == 'ru' %}active{% endif %}">RU</a>
+            </div>
+            <!-- Currency switcher (mobile, no RUB) -->
+            <div class="switcher currency-switcher">
+                <a href="/set-currency/eur" class="sw-btn {% if currency == 'eur' %}active{% endif %}">€</a>
+                <a href="/set-currency/usd" class="sw-btn {% if currency == 'usd' %}active{% endif %}">$</a>
+                <a href="/set-currency/gbp" class="sw-btn {% if currency == 'gbp' %}active{% endif %}">£</a>
+                <a href="/set-currency/chf" class="sw-btn {% if currency == 'chf' %}active{% endif %}">₣</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page content -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="footer-inner">
+            <div class="footer-col">
+                <h4 class="footer-heading">TEMPORA</h4>
+                <p class="footer-text">{{ t('footer_desc', lang) }}</p>
+                <div class="footer-socials">
+                    <a href="https://t.me/{{ bot_username }}" class="social-link" title="Telegram">
+                        <i class="fab fa-telegram-plane"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="footer-col">
+                <h4 class="footer-heading">{{ t('footer_catalog', lang) }}</h4>
+                <a href="/catalog?category=watches" class="footer-link">{{ t('cat_watches', lang) }}</a>
+                <a href="/catalog?category=bags"    class="footer-link">{{ t('cat_bags',    lang) }}</a>
+                <a href="/catalog?category=clothing" class="footer-link">{{ t('cat_clothing', lang) }}</a>
+            </div>
+            <div class="footer-col">
+                <h4 class="footer-heading">{{ t('footer_info', lang) }}</h4>
+                <a href="/help"    class="footer-link">{{ t('footer_support', lang) }}</a>
+                <a href="/track"   class="footer-link">{{ t('footer_track',   lang) }}</a>
+                <a href="/account" class="footer-link">{{ t('footer_account', lang) }}</a>
+            </div>
+            <div class="footer-col">
+                <h4 class="footer-heading">{{ t('footer_contacts', lang) }}</h4>
+                <p class="footer-text">
+                    <i class="fab fa-telegram-plane"></i>
+                    <a href="https://t.me/{{ bot_username }}" class="footer-link inline">@{{ bot_username }}</a>
+                </p>
+                <p class="footer-text">
+                    <i class="fas fa-envelope"></i> support@tempora.shop
+                </p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2024–2026 TemporaShop. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="/static/js/main.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

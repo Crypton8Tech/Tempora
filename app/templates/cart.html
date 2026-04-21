@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}{{ t('cart_title', lang) }}{% endblock %}
+
+{% block content %}
+<section class="section cart-section">
+    <div class="container">
+        <h1 class="page-title animate-fade-up">{{ t('cart_title', lang) }}</h1>
+
+        {% if items %}
+        <div class="cart-layout animate-fade-up delay-1">
+            <div class="cart-items">
+                {% for item in items %}
+                <div class="cart-item" data-id="{{ item.id }}">
+                    <div class="cart-item-img">
+                        <img src="{{ item.product.images[0].url if item.product and item.product.images else '/static/uploads/placeholder.svg' }}" alt="{{ loc(item.product, 'name', lang) }}">
+                    </div>
+                    <div class="cart-item-info">
+                        <a href="/product/{{ item.product.sku }}" class="cart-item-name">{{ loc(item.product, 'name', lang) }}</a>
+                        <span class="cart-item-brand">{{ item.product.brand }}</span>
+                        <span class="cart-item-price">{{ format_price(item.product.price, currency) }}</span>
+                    </div>
+                    <div class="cart-item-actions">
+                        <div class="qty-selector">
+                            <button type="button" class="qty-btn" data-action="qty" data-id="{{ item.id }}" data-qty="{{ item.quantity - 1 }}">−</button>
+                            <span class="qty-display">{{ item.quantity }}</span>
+                            <button type="button" class="qty-btn" data-action="qty" data-id="{{ item.id }}" data-qty="{{ item.quantity + 1 }}">+</button>
+                        </div>
+                        <span class="cart-item-total">{{ format_price(item.product.price * item.quantity, currency) }}</span>
+                        <button class="remove-btn" data-action="remove" data-id="{{ item.id }}" title="{{ t('delete', lang) }}">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="cart-summary">
+                <h3>{{ t('summary_title', lang) }}</h3>
+                <div class="summary-row">
+                    <span>{{ t('items_count', lang) }}: {{ items|length }}</span>
+                    <span class="summary-total">{{ format_price(total, currency) }}</span>
+                </div>
+                <form action="/api/checkout" method="post" class="checkout-form">
+                    <h4 class="checkout-section-title">{{ t('delivery_title', lang) }}</h4>
+
+                    {% if is_guest %}
+                    <div class="form-group">
+                        <label>{{ t('name_label', lang) }}</label>
+                        <input type="text" name="guest_name" class="form-input" placeholder="{{ t('name_placeholder', lang) }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>{{ t('email_label', lang) }}</label>
+                        <input type="email" name="guest_email" class="form-input" placeholder="{{ t('email_placeholder', lang) }}" required>
+                    </div>
+                    {% endif %}
+
+                    <div class="form-group">
+                        <label>{{ t('phone_label', lang) }}</label>
+                        <input type="tel" name="phone" class="form-input" placeholder="{{ t('phone_placeholder', lang) }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>{{ t('address_label', lang) }}</label>
+                        <textarea name="address" class="form-input" rows="3" placeholder="{{ t('address_placeholder', lang) }}" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>{{ t('comment_label', lang) }}</label>
+                        <textarea name="note" class="form-input" rows="2" placeholder="{{ t('comment_placeholder', lang) }}"></textarea>
+                    </div>
+
+                    {% if stripe_pk %}
+                    <button type="submit" class="btn btn-primary btn-lg btn-full stripe-pay-btn">
+                        <i class="fas fa-credit-card"></i> {{ t('pay_btn', lang) }}
+                    </button>
+                    <p style="text-align:center;margin-top:8px;color:var(--text-dim);font-size:0.85rem;">
+                        <i class="fas fa-lock"></i> {{ t('stripe_secure', lang) }}
+                    </p>
+                    {% else %}
+                    <button type="submit" class="btn btn-primary btn-lg btn-full">
+                        <i class="fas fa-credit-card"></i> {{ t('checkout_btn', lang) }}
+                    </button>
+                    {% if provider_name %}
+                    <p style="text-align:center;margin-top:8px;color:var(--text-dim);font-size:0.85rem;">
+                        <i class="fas fa-lock"></i> {{ t('payment_provider_label', lang) }}: {{ provider_name }}
+                    </p>
+                    {% endif %}
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div class="empty-state animate-fade-up">
+            <i class="fas fa-shopping-bag"></i>
+            <h3>{{ t('cart_empty', lang) }}</h3>
+            <p>{{ t('cart_empty_text', lang) }}</p>
+            <a href="/catalog" class="btn btn-primary">{{ t('go_to_catalog', lang) }}</a>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('click', function(e) {
+    const qtyBtn = e.target.closest('[data-action="qty"]');
+    const rmBtn = e.target.closest('[data-action="remove"]');
+    if (qtyBtn) {
+        updateQty(parseInt(qtyBtn.dataset.id), parseInt(qtyBtn.dataset.qty));
+    } else if (rmBtn) {
+        removeItem(parseInt(rmBtn.dataset.id));
+    }
+});
+
+function updateQty(itemId, qty) {
+    if (qty < 1) {
+        removeItem(itemId);
+        return;
+    }
+    const data = new FormData();
+    data.append('item_id', itemId);
+    data.append('quantity', qty);
+    fetch('/api/cart/update', { method: 'POST', body: data })
+        .then(r => r.json())
+        .then(() => location.reload());
+}
+
+function removeItem(itemId) {
+    const data = new FormData();
+    data.append('item_id', itemId);
+    fetch('/api/cart/remove', { method: 'POST', body: data })
+        .then(r => r.json())
+        .then(() => {
+            const el = document.querySelector('[data-id="' + itemId + '"].cart-item');
+            if (el) {
+                el.style.animation = 'slideOut 0.3s ease forwards';
+                setTimeout(() => location.reload(), 300);
+            } else {
+                location.reload();
+            }
+        });
+}
+</script>
+{% endblock %}

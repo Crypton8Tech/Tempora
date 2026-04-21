@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ t('order_placed', lang) }}{% endblock %}
+
+{% block content %}
+<section class="section success-section">
+    <div class="container">
+        <div class="success-card animate-fade-up">
+            <div class="success-icon"><i class="fas fa-check-circle"></i></div>
+            <h1>{{ t('order_placed', lang) }}</h1>
+            {% if order %}
+            <p class="success-number">{{ t('order_number_label', lang) }}: <strong>{{ order.order_number }}</strong></p>
+            {% if order.status == 'paid' %}
+            <p class="success-text">{{ t('order_payment_ok', lang) }}</p>
+            {% else %}
+            <p class="success-text">{{ t('order_pending_info', lang) }}</p>
+            {% endif %}
+            <div class="success-actions">
+                {% if user %}
+                <a href="/account" class="btn btn-primary">{{ t('my_orders', lang) }}</a>
+                {% endif %}
+                <a href="/catalog" class="btn btn-outline">{{ t('continue_shopping', lang) }}</a>
+            </div>
+            {% else %}
+            <p>{{ t('order_not_found', lang) }}</p>
+            <a href="/" class="btn btn-primary">{{ t('go_home', lang) }}</a>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}

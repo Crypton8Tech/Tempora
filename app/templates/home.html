@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav_home', lang) }}{% endblock %}
+
+{% block content %}
+<!-- Hero Section with Parallax -->
+<section class="hero" id="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-particles" id="heroParticles"></div>
+    <div class="hero-content">
+        <div class="hero-badge animate-fade-up">{{ t('hero_badge', lang) }}</div>
+        <h1 class="hero-title animate-fade-up delay-1">TEMPORA</h1>
+        <span class="hero-title-rule animate-fade-up delay-2"></span>
+        <p class="hero-subtitle animate-fade-up delay-2">{{ t('hero_subtitle', lang) }}</p>
+        <div class="hero-actions animate-fade-up delay-3">
+            <a href="/catalog" class="btn btn-primary btn-lg">{{ t('hero_catalog_btn', lang) }}</a>
+            <a href="https://t.me/{{ bot_username }}" class="btn btn-outline btn-lg" target="_blank">
+                <i class="fab fa-telegram-plane"></i> Telegram
+            </a>
+        </div>
+    </div>
+    <div class="hero-scroll-hint animate-bounce">
+        <i class="fas fa-chevron-down"></i>
+    </div>
+</section>
+
+<!-- Brand Marquee -->
+<div class="brand-marquee">
+    <div class="marquee-track">
+        <span>ROLEX</span><span class="dot">◆</span>
+        <span>HERMÈS</span><span class="dot">◆</span>
+        <span>AUDEMARS PIGUET</span><span class="dot">◆</span>
+        <span>CHANEL</span><span class="dot">◆</span>
+        <span>PATEK PHILIPPE</span><span class="dot">◆</span>
+        <span>RICHARD MILLE</span><span class="dot">◆</span>
+        <span>CARTIER</span><span class="dot">◆</span>
+        <span>IWC</span><span class="dot">◆</span>
+        <span>ROLEX</span><span class="dot">◆</span>
+        <span>HERMÈS</span><span class="dot">◆</span>
+        <span>AUDEMARS PIGUET</span><span class="dot">◆</span>
+        <span>CHANEL</span><span class="dot">◆</span>
+        <span>PATEK PHILIPPE</span><span class="dot">◆</span>
+        <span>RICHARD MILLE</span><span class="dot">◆</span>
+        <span>CARTIER</span><span class="dot">◆</span>
+        <span>IWC</span><span class="dot">◆</span>
+    </div>
+</div>
+
+<!-- Categories Section -->
+<section class="section categories-section" style="padding-top: 50px; padding-bottom: 50px;">
+    <div class="container">
+        <h2 class="section-title animate-on-scroll">{{ t('categories_title', lang) }}</h2>
+        <div class="categories-grid">
+            <a href="/catalog?category=watches" class="category-card animate-on-scroll">
+                <div class="category-bg-icon"><i class="fas fa-clock"></i></div>
+                <div class="category-icon"><i class="fas fa-clock"></i></div>
+                <h3 class="category-name">{{ t('cat_watches', lang) }}</h3>
+                <p class="category-desc">{{ t('cat_watches_desc', lang) }}</p>
+                <span class="category-arrow"><i class="fas fa-arrow-right"></i></span>
+            </a>
+            <a href="/catalog?category=bags" class="category-card animate-on-scroll">
+                <div class="category-bg-icon"><i class="fas fa-bag-shopping"></i></div>
+                <div class="category-icon"><i class="fas fa-bag-shopping"></i></div>
+                <h3 class="category-name">{{ t('cat_bags', lang) }}</h3>
+                <p class="category-desc">{{ t('cat_bags_desc', lang) }}</p>
+                <span class="category-arrow"><i class="fas fa-arrow-right"></i></span>
+            </a>
+            <a href="/catalog?category=clothing" class="category-card animate-on-scroll">
+                <div class="category-bg-icon"><i class="fas fa-shirt"></i></div>
+                <div class="category-icon"><i class="fas fa-shirt"></i></div>
+                <h3 class="category-name">{{ t('cat_clothing', lang) }}</h3>
+                <p class="category-desc">{{ t('cat_clothing_desc', lang) }}</p>
+                <span class="category-arrow"><i class="fas fa-arrow-right"></i></span>
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- Featured Products -->
+{% if featured %}
+<section class="section featured-section" style="padding-top: 40px; padding-bottom: 50px;">
+    <div class="container">
+        <div class="section-header">
+            <h2 class="section-title animate-on-scroll" style="margin-bottom: 12px;">{{ t('new_arrivals', lang) }}</h2>
+            <p class="section-subtitle animate-on-scroll">{{ t('new_arrivals_desc', lang) }}</p>
+        </div>
+        <div class="products-grid">
+            {% for product in featured %}
+            <div class="product-card animate-on-scroll">
+                <a href="/product/{{ product.sku }}" class="product-card-link">
+                    <div class="product-card-img">
+                        <img src="{{ product.images[0].url if product.images else '/static/uploads/placeholder.svg' }}"
+                             alt="{{ loc(product, 'name', lang) }}" loading="lazy">
+                        <div class="product-card-overlay">
+                            <span class="overlay-text">{{ t('view_details', lang) }}</span>
+                        </div>
+                    </div>
+                    <div class="product-card-info">
+                        <span class="product-brand">{{ product.brand }}</span>
+                        <h3 class="product-name">{{ loc(product, 'name', lang) }}</h3>
+                        <p class="product-price">{{ format_price(product.price, currency) }}</p>
+                    </div>
+                </a>
+                <!-- Buy Now button — short funnel, no cart needed -->
+                <div class="product-card-actions">
+                    <a href="/quick-order/{{ product.sku }}" class="btn btn-primary btn-sm btn-full">
+                        <i class="fas fa-bolt"></i> {{ t('buy_now', lang) }}
+                    </a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="section-footer" style="margin-top: 32px;">
+            <a href="/catalog" class="btn btn-outline">{{ t('view_all', lang) }} <i class="fas fa-arrow-right"></i></a>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<!-- Parallax Banner -->
+<section class="parallax-banner" data-parallax="0.3">
+    <div class="parallax-overlay"></div>
+    <div class="parallax-content">
+        <h2 class="animate-on-scroll">{{ t('originals_only', lang) }}</h2>
+        <p class="animate-on-scroll">{{ t('originals_text', lang) }}</p>
+    </div>
+</section>
+
+<!-- Advantages -->
+<section class="section advantages-section" style="padding-top: 50px; padding-bottom: 50px;">
+    <div class="container">
+        <div class="advantages-grid">
+            <div class="advantage-card animate-on-scroll">
+                <div class="advantage-icon"><i class="fas fa-medal"></i></div>
+                <h3>{{ t('adv_auth', lang) }}</h3>
+                <p>{{ t('adv_auth_text', lang) }}</p>
+            </div>
+            <div class="advantage-card animate-on-scroll">
+                <div class="advantage-icon"><i class="fas fa-truck-fast"></i></div>
+                <h3>{{ t('adv_delivery', lang) }}</h3>
+                <p>{{ t('adv_delivery_text', lang) }}</p>
+            </div>
+            <div class="advantage-card animate-on-scroll">
+                <div class="advantage-icon"><i class="fas fa-headset"></i></div>
+                <h3>{{ t('adv_support', lang) }}</h3>
+                <p>{{ t('adv_support_text', lang) }}</p>
+            </div>
+            <div class="advantage-card animate-on-scroll">
+                <div class="advantage-icon"><i class="fas fa-rotate-left"></i></div>
+                <h3>{{ t('adv_return', lang) }}</h3>
+                <p>{{ t('adv_return_text', lang) }}</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Stats Counter -->
+<section class="stats-strip">
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-item animate-on-scroll">
+                <span class="stat-number" data-count="500">0</span><span class="stat-plus">+</span>
+                <span class="stat-text">{{ t('stat_products', lang) }}</span>
+            </div>
+            <div class="stat-item animate-on-scroll">
+                <span class="stat-number" data-count="2000">0</span><span class="stat-plus">+</span>
+                <span class="stat-text">{{ t('stat_clients', lang) }}</span>
+            </div>
+            <div class="stat-item animate-on-scroll">
+                <span class="stat-number" data-count="50">0</span><span class="stat-plus">+</span>
+                <span class="stat-text">{{ t('stat_brands', lang) }}</span>
+            </div>
+            <div class="stat-item animate-on-scroll">
+                <span class="stat-number" data-count="5">0</span>
+                <span class="stat-text">{{ t('stat_years', lang) }}</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="section cta-section" style="padding: 50px 0 60px;">
+    <div class="container">
+        <div class="cta-card animate-on-scroll">
+            <div class="cta-icon"><i class="fab fa-telegram-plane"></i></div>
+            <h2>{{ t('cta_title', lang) }}</h2>
+            <p>{{ t('cta_text', lang) }}</p>
+            <a href="https://t.me/{{ bot_username }}" class="btn btn-primary btn-lg" target="_blank">
+                <i class="fab fa-telegram-plane"></i> {{ t('cta_btn', lang) }}
+            </a>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function initParallax() {
+    const banner = document.querySelector('.parallax-banner');
+    if (!banner) return;
+    window.addEventListener('scroll', () => {
+        const rect = banner.getBoundingClientRect();
+        const speed = parseFloat(banner.dataset.parallax) || 0.3;
+        if (rect.bottom > 0 && rect.top < window.innerHeight) {
+            const y = (rect.top - window.innerHeight) * speed;
+            banner.style.backgroundPositionY = y + 'px';
+        }
+    }, { passive: true });
+}
+
+function initCounters() {
+    const counters = document.querySelectorAll('.stat-number[data-count]');
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const el = entry.target;
+                const target = parseInt(el.dataset.count);
+                const duration = 2000;
+                const start = performance.now();
+                function tick(now) {
+                    const progress = Math.min((now - start) / duration, 1);
+                    const ease = 1 - Math.pow(1 - progress, 3);
+                    el.textContent = Math.floor(target * ease);
+                    if (progress < 1) requestAnimationFrame(tick);
+                    else el.textContent = target;
+                }
+                requestAnimationFrame(tick);
+                observer.unobserve(el);
+            }
+        });
+    }, { threshold: 0.5 });
+    counters.forEach(el => observer.observe(el));
+}
+
+function initHeroParticles() {
+    const canvas = document.getElementById('heroParticles');
+    if (!canvas) return;
+    const count = 30;
+    for (let i = 0; i < count; i++) {
+        const p = document.createElement('div');
+        p.className = 'hero-particle';
+        const size = Math.random() * 3 + 1;
+        p.style.cssText = 'width:' + size + 'px;height:' + size + 'px;left:' + Math.random() * 100 + '%;top:' + Math.random() * 100 + '%;animation-delay:' + Math.random() * 6 + 's;animation-duration:' + (4 + Math.random() * 4) + 's;';
+        canvas.appendChild(p);
+    }
+}
+
+initParallax();
+initCounters();
+initHeroParticles();
+</script>
+{% endblock %}

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}{{ t('payment_title', lang) }}{% endblock %}
+
+{% block content %}
+<section class="section payment-section">
+    <div class="container" style="max-width:720px;margin:0 auto;">
+
+        {% if order %}
+        <div class="payment-card animate-fade-up" style="background:var(--card-bg, #fff);border-radius:12px;padding:32px;box-shadow:0 2px 16px rgba(0,0,0,0.07);margin-top:40px;">
+
+            <!-- Status banner -->
+            {% if order.status == 'paid' %}
+            <div style="background:#d4edda;color:#155724;padding:14px 20px;border-radius:8px;margin-bottom:24px;text-align:center;font-weight:600;">
+                <i class="fas fa-check-circle"></i> {{ t('payment_paid', lang) }}
+            </div>
+            {% else %}
+            <div style="background:#fff3cd;color:#856404;padding:14px 20px;border-radius:8px;margin-bottom:24px;text-align:center;">
+                <i class="fas fa-clock"></i> {{ t('payment_awaiting', lang) }}
+                <div style="font-size:0.85rem;margin-top:4px;opacity:0.85;">{{ t('payment_awaiting_text', lang) }}</div>
+            </div>
+            {% endif %}
+
+            <h1 style="font-size:1.5rem;margin:0 0 4px 0;">{{ t('payment_title', lang) }}</h1>
+            <p style="color:var(--text-dim, #888);margin:0 0 24px 0;font-size:0.95rem;">
+                {{ t('order_number_label', lang) }}: <strong>{{ order.order_number }}</strong>
+            </p>
+
+            <!-- Payment provider -->
+            {% if provider_name %}
+            <div style="margin-bottom:20px;padding:10px 14px;background:var(--bg-secondary, #f8f9fa);border-radius:6px;font-size:0.9rem;">
+                <strong>{{ t('payment_provider_label', lang) }}:</strong> {{ provider_name }}
+            </div>
+            {% endif %}
+
+            <!-- Payment instructions -->
+            {% if payment_instructions %}
+            <div style="margin-bottom:24px;">
+                <h3 style="font-size:1.1rem;margin:0 0 12px 0;">
+                    <i class="fas fa-info-circle" style="color:var(--accent, #c9a050);"></i>
+                    {{ t('payment_instructions_title', lang) }}
+                </h3>
+                <div class="payment-instructions-content" style="background:var(--bg-secondary, #f5f5f5);border-radius:8px;padding:20px;line-height:1.7;font-size:0.95rem;border-left:4px solid var(--accent, #c9a050);">
+                    {{ payment_instructions | safe }}
+                </div>
+            </div>
+            {% else %}
+            <div style="margin-bottom:24px;padding:16px;background:var(--bg-secondary, #f5f5f5);border-radius:8px;text-align:center;color:var(--text-dim, #888);">
+                <i class="fas fa-envelope" style="font-size:1.3rem;margin-bottom:8px;display:block;"></i>
+                {{ t('payment_no_instructions', lang) }}
+            </div>
+            {% endif %}
+
+            <!-- Order items -->
+            <div style="margin-bottom:24px;">
+                <h3 style="font-size:1.1rem;margin:0 0 12px 0;">{{ t('payment_order_info', lang) }}</h3>
+                <table style="width:100%;border-collapse:collapse;font-size:0.9rem;">
+                    <thead>
+                        <tr style="border-bottom:2px solid var(--border, #eee);">
+                            <th style="text-align:left;padding:8px 4px;">{{ t('payment_item', lang) }}</th>
+                            <th style="text-align:center;padding:8px 4px;">{{ t('payment_qty', lang) }}</th>
+                            <th style="text-align:right;padding:8px 4px;">{{ t('payment_price', lang) }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in order.items %}
+                        <tr style="border-bottom:1px solid var(--border, #f0f0f0);">
+                            <td style="padding:10px 4px;display:flex;align-items:center;gap:10px;">
+                                {% if item.image_url %}
+                                <img src="{{ item.image_url }}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:6px;">
+                                {% endif %}
+                                <span>{{ item.product_name }}</span>
+                            </td>
+                            <td style="text-align:center;padding:10px 4px;">{{ item.quantity }}</td>
+                            <td style="text-align:right;padding:10px 4px;">{{ format_price(item.price * item.quantity, currency) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 4px 0;border-top:2px solid var(--border, #eee);margin-top:8px;font-size:1.1rem;font-weight:600;">
+                    <span>{{ t('payment_total', lang) }}</span>
+                    <span style="color:var(--accent, #c9a050);">{{ format_price(order.total, currency) }}</span>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:20px;">
+                {% if order.status == 'paid' %}
+                <a href="/order-success/{{ order.order_number }}" class="btn btn-primary" style="padding:12px 32px;">
+                    <i class="fas fa-check"></i> {{ t('payment_go_to_order', lang) }}
+                </a>
+                {% endif %}
+                <a href="/track/result?order_number={{ order.order_number }}" class="btn btn-outline" style="padding:12px 32px;">
+                    <i class="fas fa-search"></i> {{ t('track_status', lang) }}
+                </a>
+                <a href="/catalog" class="btn btn-outline" style="padding:12px 32px;">
+                    <i class="fas fa-shopping-bag"></i> {{ t('continue_shopping', lang) }}
+                </a>
+            </div>
+        </div>
+
+        {% else %}
+        <div class="empty-state animate-fade-up" style="margin-top:60px;">
+            <i class="fas fa-exclamation-circle"></i>
+            <h3>{{ t('order_not_found', lang) }}</h3>
+            <a href="/" class="btn btn-primary">{{ t('go_home', lang) }}</a>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% if order and order.status != 'paid' %}
+<script>
+// Auto-refresh every 15 seconds to check payment status
+(function() {
+    var refreshInterval = setInterval(function() {
+        fetch('/api/payment-status/{{ order.order_number }}')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.status === 'paid') {
+                    clearInterval(refreshInterval);
+                    location.reload();
+                }
+            })
+            .catch(function() {});
+    }, 15000);
+})();
+</script>
+{% endif %}
+{% endblock %}

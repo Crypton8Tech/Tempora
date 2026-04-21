@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ t('catalog_title', lang) }}{% endblock %}
+
+{% block content %}
+<section class="section catalog-section" style="padding-top: 100px;">
+    <div class="container">
+        <h1 class="page-title animate-fade-up">{{ t('catalog_title', lang) }}</h1>
+
+        <!-- Filters -->
+        <form class="filters-bar animate-fade-up delay-1" method="get" action="/catalog">
+            <div class="filter-group">
+                <label class="filter-label">{{ t('filter_category', lang) }}</label>
+                <select name="category" class="filter-select" onchange="this.form.submit()">
+                    <option value="">{{ t('filter_all', lang) }}</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat.slug }}" {% if selected_category == cat.slug %}selected{% endif %}>{{ loc(cat, 'name', lang) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">{{ t('filter_brand', lang) }}</label>
+                <select name="brand" class="filter-select">
+                    <option value="">{{ t('filter_all', lang) }}</option>
+                    {% for b in brands %}
+                    <option value="{{ b }}" {% if selected_brand == b %}selected{% endif %}>{{ b }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">{{ t('filter_price_from', lang) }}</label>
+                <input type="number" name="min_price" class="filter-input" placeholder="0" value="{{ min_price }}">
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">{{ t('filter_price_to', lang) }}</label>
+                <input type="number" name="max_price" class="filter-input" placeholder="∞" value="{{ max_price }}">
+            </div>
+            <div class="filter-group">
+                <label class="filter-label">{{ t('filter_search', lang) }}</label>
+                <input type="text" name="q" class="filter-input" placeholder="{{ t('filter_search_placeholder', lang) }}" value="{{ q }}">
+            </div>
+            <button type="submit" class="btn btn-primary filter-btn"><i class="fas fa-search"></i> {{ t('filter_find', lang) }}</button>
+            <a href="/catalog" class="btn btn-outline filter-btn"><i class="fas fa-times"></i> {{ t('filter_reset', lang) }}</a>
+        </form>
+
+        <!-- Products Grid -->
+        {% if products %}
+        <div class="products-grid catalog-grid">
+            {% for product in products %}
+            <a href="/product/{{ product.sku }}" class="product-card animate-on-scroll">
+                <div class="product-card-img">
+                    <img src="{{ product.images[0].url if product.images else '/static/uploads/placeholder.svg' }}" alt="{{ loc(product, 'name', lang) }}" loading="lazy">
+                    <div class="product-card-overlay">
+                        <span class="overlay-text">{{ t('view_details', lang) }}</span>
+                    </div>
+                </div>
+                <div class="product-card-info">
+                    <span class="product-brand">{{ product.brand }}</span>
+                    <h3 class="product-name">{{ loc(product, 'name', lang) }}</h3>
+                    <p class="product-price">{{ format_price(product.price, currency) }}</p>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state animate-fade-up">
+            <i class="fas fa-search"></i>
+            <h3>{{ t('no_products', lang) }}</h3>
+            <p>{{ t('no_products_text', lang) }}</p>
+            <a href="/catalog" class="btn btn-outline">{{ t('reset_filters', lang) }}</a>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

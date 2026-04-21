@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ t('track_title', lang) }}{% endblock %}
+
+{% block content %}
+<section class="section track-section">
+    <div class="container">
+        <div class="track-card animate-fade-up">
+            <h1 class="auth-title"><i class="fas fa-truck"></i> {{ t('track_title', lang) }}</h1>
+            <form method="get" action="/track/result" class="auth-form">
+                <div class="form-group">
+                    <label>{{ t('track_order_number', lang) }}</label>
+                    <input type="text" name="order_number" class="form-input" placeholder="TS-XXXXXXXX" required autofocus>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">{{ t('track_btn', lang) }}</button>
+            </form>
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ t('track_title', lang) }}{% endblock %}
+
+{% block content %}
+<section class="section track-section">
+    <div class="container">
+        <div class="track-card animate-fade-up">
+            <a href="/track" class="back-link"><i class="fas fa-arrow-left"></i> {{ t('back', lang) }}</a>
+            {% if order %}
+            <h2 class="auth-title">{{ t('order_number_label', lang) }}: {{ order.order_number }}</h2>
+            <div class="track-details">
+                <div class="track-row">
+                    <span>{{ t('track_status', lang) }}:</span>
+                    <span class="order-status status-{{ order.status }}">
+                        {{ t('status_' + order.status, lang) }}
+                    </span>
+                </div>
+                <div class="track-row">
+                    <span>{{ t('track_date', lang) }}:</span>
+                    <span>{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
+                </div>
+                <div class="track-row">
+                    <span>{{ t('track_total', lang) }}:</span>
+                    <span>{{ format_price(order.total, currency) }}</span>
+                </div>
+                {% if order.tracking_number %}
+                <div class="track-row">
+                    <span>{{ t('track_tracking', lang) }}:</span>
+                    <span class="tracking-number">{{ order.tracking_number }}</span>
+                </div>
+                {% endif %}
+            </div>
+            <h3 class="mt-2">{{ t('track_items', lang) }}</h3>
+            <div class="order-items-list">
+                {% for item in order.items %}
+                <div class="order-item-row">
+                    <span>{{ item.product_name }}</span>
+                    <span>{{ item.quantity }} × {{ format_price(item.price, currency) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-search"></i>
+                <h3>{{ t('track_not_found', lang) }}</h3>
+                <p>{{ t('track_not_found_text', lang) }}: {{ order_number }}</p>
+                <a href="/track" class="btn btn-outline">{{ t('track_btn', lang) }}</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}

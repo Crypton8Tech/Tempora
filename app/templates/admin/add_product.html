@@ -1,0 +1,117 @@
+{% extends "admin/base.html" %}
+{% block title %}Добавить товар{% endblock %}
+
+{% block content %}
+<div class="admin-page-header">
+    <h2 class="admin-page-title">Добавить товар</h2>
+    <a href="/admin/products" class="admin-btn admin-btn-outline">← Назад</a>
+</div>
+
+{% if error %}
+<div class="admin-error" style="margin-bottom:16px;">{{ error }}</div>
+{% endif %}
+
+<div class="admin-card">
+    <form method="post" action="/admin/products/add" enctype="multipart/form-data" class="admin-form">
+
+        <div class="form-group">
+            <label>Название / Name (RU) *</label>
+            <input type="text" name="name" class="admin-input"
+                   placeholder="Rolex Submariner Date" required>
+            <small style="color:#6b7280;">
+                🌐 Переводы на EN / DE / FR / IT / ES создадутся автоматически
+            </small>
+        </div>
+
+        <div class="form-group">
+            <label>SKU (артикул) *</label>
+            <input type="text" name="sku" class="admin-input"
+                   placeholder="rolex-submariner-001" required>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div class="form-group">
+                <label>Бренд</label>
+                <input type="text" name="brand" class="admin-input" placeholder="Rolex">
+            </div>
+            <div class="form-group">
+                <label>Модель</label>
+                <input type="text" name="model" class="admin-input" placeholder="Submariner Date">
+            </div>
+        </div>
+
+        <!-- Цена в EUR + живая конвертация -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div class="form-group">
+                <label>Цена (€ EUR) *</label>
+                <div style="position:relative;">
+                    <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);
+                                 color:#6b7280;font-size:1rem;">€</span>
+                    <input type="number" name="price" id="priceInput" class="admin-input"
+                           placeholder="350" step="0.01" min="0" required
+                           style="padding-left:28px;"
+                           oninput="updateConversions(this.value)">
+                </div>
+                <!-- Live conversion preview -->
+                <div id="convPreview" style="margin-top:8px;display:none;
+                     background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;
+                     padding:10px 14px;font-size:0.82rem;color:#6b7280;line-height:1.8;">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Категория *</label>
+                <select name="category_id" class="admin-input" required>
+                    {% for cat in categories %}
+                    <option value="{{ cat.id }}">{{ cat.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Описание (RU)</label>
+            <textarea name="description" class="admin-input" rows="5"
+                      placeholder="Подробное описание товара..."></textarea>
+            <small style="color:#6b7280;">
+                🌐 Описание тоже переведётся автоматически на все языки
+            </small>
+        </div>
+
+        <div class="form-group">
+            <label>Фотографии</label>
+            <input type="file" name="images" class="admin-input"
+                   multiple accept="image/*">
+            <small style="color:#6b7280;">Можно выбрать несколько файлов</small>
+        </div>
+
+        <button type="submit" class="admin-btn admin-btn-primary" style="padding:12px 32px;">
+            <i class="fas fa-plus"></i> Добавить товар
+        </button>
+    </form>
+</div>
+
+<script>
+// Актуальные курсы (EUR как база)
+const RATES = {
+    USD: 1.08,
+    GBP: 0.86,
+    CHF: 0.97,
+};
+
+function updateConversions(val) {
+    const eur = parseFloat(val);
+    const box = document.getElementById('convPreview');
+    if (!eur || eur <= 0) { box.style.display = 'none'; return; }
+
+    const fmt = (n) => n.toLocaleString('en-EU', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+
+    box.innerHTML =
+        `<strong>Покупатель увидит:</strong><br>` +
+        `🇪🇺 EUR &nbsp; <strong>€${fmt(eur)}</strong><br>` +
+        `🇺🇸 USD &nbsp; <strong>$${fmt(eur * RATES.USD)}</strong><br>` +
+        `🇬🇧 GBP &nbsp; <strong>£${fmt(eur * RATES.GBP)}</strong><br>` +
+        `🇨🇭 CHF &nbsp; <strong>₣${fmt(eur * RATES.CHF)}</strong>`;
+    box.style.display = 'block';
+}
+</script>
+{% endblock %}

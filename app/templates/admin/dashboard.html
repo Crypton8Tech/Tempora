@@ -1,0 +1,59 @@
+{% extends "admin/base.html" %}
+{% block title %}Дашборд{% endblock %}
+
+{% block content %}
+<h2 class="admin-page-title">Дашборд</h2>
+
+<div class="admin-stats">
+    <div class="stat-card">
+        <div class="stat-value">{{ products_count }}</div>
+        <div class="stat-label">Товаров</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ orders_count }}</div>
+        <div class="stat-label">Заказов</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ "{:,.0f}".format(total_revenue).replace(",", " ") }} ₽</div>
+        <div class="stat-label">Общая выручка</div>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="admin-page-header">
+        <h3>Последние заказы</h3>
+        <a href="/admin/orders" class="admin-btn admin-btn-outline admin-btn-sm">Все заказы →</a>
+    </div>
+    {% if orders %}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Номер</th>
+                <th>Дата</th>
+                <th>Статус</th>
+                <th>Сумма</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in orders[:10] %}
+            <tr>
+                <td><strong>{{ order.order_number }}</strong></td>
+                <td>{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                <td>
+                    {% if order.status == 'pending' %}<span class="admin-badge admin-badge-yellow">В обработке</span>
+                    {% elif order.status == 'paid' %}<span class="admin-badge admin-badge-green">Оплачен</span>
+                    {% elif order.status == 'shipped' %}<span class="admin-badge admin-badge-blue">Отправлен</span>
+                    {% elif order.status == 'delivered' %}<span class="admin-badge admin-badge-green">Доставлен</span>
+                    {% elif order.status == 'cancelled' %}<span class="admin-badge admin-badge-red">Отменён</span>
+                    {% else %}<span class="admin-badge admin-badge-gray">{{ order.status }}</span>{% endif %}
+                </td>
+                <td>{{ "{:,.0f}".format(order.total).replace(",", " ") }} ₽</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #6b7280; text-align: center; padding: 24px;">Заказов пока нет</p>
+    {% endif %}
+</div>
+{% endblock %}

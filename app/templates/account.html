@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{{ t('account_title', lang) }}{% endblock %}
+
+{% block content %}
+<section class="section account-section">
+    <div class="container">
+        <h1 class="page-title animate-fade-up">{{ t('account_title', lang) }}</h1>
+
+        <div class="account-grid animate-fade-up delay-1">
+            <!-- Profile Card -->
+            <div class="account-card profile-card">
+                <div class="account-avatar"><i class="fas fa-user"></i></div>
+                <h2>{{ user.name }}</h2>
+                <p class="account-email">{{ user.email }}</p>
+                <a href="/auth/logout" class="btn btn-outline btn-sm">{{ t('nav_sign_out', lang) }}</a>
+            </div>
+
+            <!-- Orders -->
+            <div class="account-card orders-card">
+                <h2><i class="fas fa-box"></i> {{ t('my_orders', lang) }}</h2>
+                {% if orders %}
+                <div class="orders-list">
+                    {% for order in orders %}
+                    <div class="order-row">
+                        <div class="order-row-left">
+                            <span class="order-number">{{ order.order_number }}</span>
+                            <span class="order-date">{{ order.created_at.strftime('%d.%m.%Y') }}</span>
+                        </div>
+                        <div class="order-row-right">
+                            <span class="order-status status-{{ order.status }}">
+                                {{ t('status_' + order.status, lang) }}
+                            </span>
+                            <span class="order-total">{{ format_price(order.total, currency) }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state small">
+                    <p>{{ t('no_orders', lang) }}</p>
+                    <a href="/catalog" class="btn btn-outline btn-sm">{{ t('go_to_catalog', lang) }}</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ t('help_title', lang) }}{% endblock %}
+
+{% block content %}
+<section class="section help-section">
+    <div class="container">
+        <h1 class="page-title animate-fade-up">{{ t('help_title', lang) }}</h1>
+
+        <div class="help-grid animate-fade-up delay-1">
+            <div class="help-card">
+                <div class="help-icon"><i class="fab fa-telegram-plane"></i></div>
+                <h3>Telegram</h3>
+                <p>{{ t('help_telegram', lang) }}</p>
+                <a href="https://t.me/tempora_shop" class="btn btn-primary" target="_blank">{{ t('help_open_bot', lang) }}</a>
+            </div>
+            <div class="help-card">
+                <div class="help-icon"><i class="fas fa-envelope"></i></div>
+                <h3>Email</h3>
+                <p>{{ t('help_email_text', lang) }}</p>
+                <a href="mailto:support@tempora.shop" class="btn btn-outline">support@tempora.shop</a>
+            </div>
+            <div class="help-card">
+                <div class="help-icon"><i class="fas fa-truck"></i></div>
+                <h3>{{ t('track_title', lang) }}</h3>
+                <p>{{ t('help_track_text', lang) }}</p>
+                <a href="/track" class="btn btn-outline">{{ t('help_track_btn', lang) }}</a>
+            </div>
+        </div>
+
+        <div class="faq-section animate-fade-up delay-2">
+            <h2 class="section-title">{{ t('faq_title', lang) }}</h2>
+            <div class="faq-list">
+                <details class="faq-item">
+                    <summary>{{ t('faq_order_q', lang) }}</summary>
+                    <p>{{ t('faq_order_a', lang) }}</p>
+                </details>
+                <details class="faq-item">
+                    <summary>{{ t('faq_payment_q', lang) }}</summary>
+                    <p>{{ t('faq_payment_a', lang) }}</p>
+                </details>
+                <details class="faq-item">
+                    <summary>{{ t('faq_delivery_q', lang) }}</summary>
+                    <p>{{ t('faq_delivery_a', lang) }}</p>
+                </details>
+                <details class="faq-item">
+                    <summary>{{ t('faq_return_q', lang) }}</summary>
+                    <p>{{ t('faq_return_a', lang) }}</p>
+                </details>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
