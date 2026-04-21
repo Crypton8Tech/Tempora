@@ -4,13 +4,17 @@
 {% block content %}
 <section class="section product-section">
     <div class="container">
-        <a href="/catalog" class="back-link animate-fade-up"><i class="fas fa-arrow-left"></i> {{ t('back_to_catalog', lang) }}</a>
+        <a href="/catalog" class="back-link animate-fade-up">
+            <i class="fas fa-arrow-left"></i> {{ t('back_to_catalog', lang) }}
+        </a>
 
         <div class="product-detail animate-fade-up delay-1">
             <!-- Gallery -->
             <div class="product-gallery">
                 <div class="gallery-main">
-                    <img id="mainImage" src="{{ product.images[0].url if product.images else '/static/uploads/placeholder.svg' }}" alt="{{ loc(product, 'name', lang) }}">
+                    <img id="mainImage"
+                         src="{{ product.images[0].url if product.images else '/static/uploads/placeholder.svg' }}"
+                         alt="{{ loc(product, 'name', lang) }}">
                 </div>
                 {% if product.images|length > 1 %}
                 <div class="gallery-thumbs">
@@ -49,19 +53,30 @@
                 </div>
                 {% endif %}
 
+                <!-- Actions -->
                 <div class="product-actions">
+                    <!-- Qty + Add to cart -->
                     <form id="addToCartForm" onsubmit="return addToCart(event)">
                         <input type="hidden" name="product_id" value="{{ product.id }}">
                         <div class="qty-selector">
                             <button type="button" class="qty-btn" onclick="changeQty(-1)">−</button>
-                            <input type="number" name="quantity" id="qtyInput" value="1" min="1" max="10" class="qty-input">
+                            <input type="number" name="quantity" id="qtyInput"
+                                   value="1" min="1" max="10" class="qty-input">
                             <button type="button" class="qty-btn" onclick="changeQty(1)">+</button>
                         </div>
-                        <button type="submit" class="btn btn-primary btn-lg add-to-cart-btn">
+                        <button type="submit" class="btn btn-secondary btn-lg add-to-cart-btn">
                             <i class="fas fa-shopping-bag"></i> {{ t('add_to_cart', lang) }}
                         </button>
                     </form>
+
+                    <!-- BUY NOW — goes straight to order form, no cart needed -->
+                    <a href="/quick-order/{{ product.sku }}"
+                       class="btn btn-primary btn-lg buy-now-btn"
+                       style="margin-top: 12px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <i class="fas fa-bolt"></i> {{ t('buy_now', lang) }}
+                    </a>
                 </div>
+
                 <div id="cartMessage" class="cart-message"></div>
             </div>
         </div>
@@ -72,31 +87,40 @@
             <h2 class="section-title">{{ t('related_products', lang) }}</h2>
             <div class="products-grid">
                 {% for p in related %}
-                <a href="/product/{{ p.sku }}" class="product-card animate-on-scroll">
-                    <div class="product-card-img">
-                        <img src="{{ p.images[0].url if p.images else '/static/uploads/placeholder.svg' }}" alt="{{ loc(p, 'name', lang) }}" loading="lazy">
-                        <div class="product-card-overlay">
-                            <span class="overlay-text">{{ t('view_details', lang) }}</span>
+                <div class="product-card animate-on-scroll">
+                    <a href="/product/{{ p.sku }}" class="product-card-link">
+                        <div class="product-card-img">
+                            <img src="{{ p.images[0].url if p.images else '/static/uploads/placeholder.svg' }}"
+                                 alt="{{ loc(p, 'name', lang) }}" loading="lazy">
+                            <div class="product-card-overlay">
+                                <span class="overlay-text">{{ t('view_details', lang) }}</span>
+                            </div>
                         </div>
+                        <div class="product-card-info">
+                            <span class="product-brand">{{ p.brand }}</span>
+                            <h3 class="product-name">{{ loc(p, 'name', lang) }}</h3>
+                            <p class="product-price">{{ format_price(p.price, currency) }}</p>
+                        </div>
+                    </a>
+                    <div class="product-card-actions">
+                        <a href="/quick-order/{{ p.sku }}" class="btn btn-primary btn-sm btn-full">
+                            <i class="fas fa-bolt"></i> {{ t('buy_now', lang) }}
+                        </a>
                     </div>
-                    <div class="product-card-info">
-                        <span class="product-brand">{{ p.brand }}</span>
-                        <h3 class="product-name">{{ loc(p, 'name', lang) }}</h3>
-                        <p class="product-price">{{ format_price(p.price, currency) }}</p>
-                    </div>
-                </a>
+                </div>
                 {% endfor %}
             </div>
         </div>
         {% endif %}
+
     </div>
 </section>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const LANG_ADDED = {{ ("'" + t('added_to_cart', lang) + "'")|safe }};
-const LANG_ERROR = {{ ("'" + t('error_adding', lang) + "'")|safe }};
+const LANG_ADDED   = {{ ("'" + t('added_to_cart', lang) + "'")|safe }};
+const LANG_ERROR   = {{ ("'" + t('error_adding',  lang) + "'")|safe }};
 const LANG_NETWORK = {{ ("'" + t('network_error', lang) + "'")|safe }};
 
 function changeMainImage(thumb, url) {

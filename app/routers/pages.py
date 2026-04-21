@@ -1,6 +1,7 @@
 """Public page routes."""
 
 from fastapi import APIRouter, Request, Depends
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,8 @@ templates.env.globals["format_price"] = _fp
 templates.env.globals["loc"] = _loc
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
 def get_current_user(request: Request, db: Session) -> User | None:
     token = request.session.get("token")
     if not token:
@@ -32,11 +35,11 @@ def get_current_user(request: Request, db: Session) -> User | None:
 
 
 def _get_lang(request: Request) -> str:
-    return request.cookies.get("lang", "ru")
+    return request.cookies.get("lang", "en")
 
 
 def _get_currency(request: Request) -> str:
-    return request.cookies.get("currency", "rub")
+    return request.cookies.get("currency", "eur")
 
 
 def _guest_cart(request: Request) -> list:
@@ -67,10 +70,18 @@ def _base_ctx(request: Request, db: Session) -> dict:
     }
 
 
+# ── Page routes ───────────────────────────────────────────────────────────────
+
 @router.get("/")
 async def home(request: Request, db: Session = Depends(get_db)):
     ctx = _base_ctx(request, db)
-    featured = db.query(Product).filter(Product.is_active == True).order_by(Product.created_at.desc()).limit(6).all()
+    featured = (
+        db.query(Product)
+        .filter(Product.is_active == True)
+        .order_by(Product.created_at.desc())
+        .limit(6)
+        .all()
+    )
     categories = db.query(Category).all()
     ctx.update({"featured": featured, "categories": categories})
     return templates.TemplateResponse("home.html", ctx)
@@ -90,7 +101,6 @@ async def catalog(
     query = db.query(Product).filter(Product.is_active == True)
     categories = db.query(Category).all()
 
-    # Parse price filters (empty string -> None)
     min_price_val = None
     max_price_val = None
     try:
@@ -119,12 +129,13 @@ async def catalog(
 
     if q:
         query = query.filter(
-            (Product.name.ilike(f"%{q}%")) | (Product.brand.ilike(f"%{q}%")) | (Product.model.ilike(f"%{q}%"))
+            (Product.name.ilike(f"%{q}%"))
+            | (Product.brand.ilike(f"%{q}%"))
+            | (Product.model.ilike(f"%{q}%"))
         )
 
     products = query.order_by(Product.created_at.desc()).all()
 
-    # Collect unique brands for filter
     all_brands = (
         db.query(Product.brand)
         .filter(Product.is_active == True)
@@ -151,17 +162,43 @@ async def product_detail(sku: str, request: Request, db: Session = Depends(get_d
     ctx = _base_ctx(request, db)
     product = db.query(Product).filter(Product.sku == sku, Product.is_active == True).first()
     if not product:
-        from fastapi.responses import RedirectResponse
         return RedirectResponse("/catalog", status_code=302)
-    # Related products
     related = (
         db.query(Product)
-        .filter(Product.category_id == product.category_id, Product.id != product.id, Product.is_active == True)
+        .filter(
+            Product.category_id == product.category_id,
+            Product.id != product.id,
+            Product.is_active == True,
+        )
         .limit(4)
         .all()
     )
     ctx.update({"product": product, "related": related})
     return templates.TemplateResponse("product_detail.html", ctx)
+
+
+@router.get("/quick-order/{sku}")
+async def quick_order_page(sku: str, request: Request, db: Session = Depends(get_db)):
+    """
+    One-click order page: user lands here from the product card 'Buy Now' button.
+    They fill in name / email / phone / address and submit — no cart required.
+    """
+    ctx = _base_ctx(request, db)
+    product = db.query(Product).filter(Product.sku == sku, Product.is_active == True).first()
+    if not product:
+        return RedirectResponse("/catalog", status_code=302)
+
+    # Get Stripe public key so we can show the Stripe-pay button if configured
+    from app.models import SiteSetting
+    stripe_pk = ""
+    s = db.query(SiteSetting).filter(SiteSetting.key == "stripe_public_key").first()
+    if s and s.value:
+        stripe_pk = s.value
+    elif settings.STRIPE_PUBLIC_KEY:
+        stripe_pk = settings.STRIPE_PUBLIC_KEY
+
+    ctx.update({"product": product, "stripe_pk": stripe_pk})
+    return templates.TemplateResponse("quick_order.html", ctx)
 
 
 @router.get("/cart")
@@ -175,46 +212,25 @@ async def cart_page(request: Request, db: Session = Depends(get_db)):
         db_items = db.query(CartItem).filter(CartItem.user_id == ctx["user"].id).all()
         for ci in db_items:
             if ci.product:
-                items.append({
-                    "id": ci.id,
-                    "product": ci.product,
-                    "quantity": ci.quantity,
-                })
+                items.append({"id": ci.id, "product": ci.product, "quantity": ci.quantity})
                 total += ci.product.price * ci.quantity
     else:
         guest_cart = _guest_cart(request)
         for entry in guest_cart:
             product = db.query(Product).filter(Product.id == entry["product_id"]).first()
             if product:
-                items.append({
-                    "id": entry["product_id"],
-                    "product": product,
-                    "quantity": entry["quantity"],
-                })
+                items.append({"id": entry["product_id"], "product": product, "quantity": entry["quantity"]})
                 total += product.price * entry["quantity"]
 
-    # Get active payment provider info for frontend
     from app.models import SiteSetting
-    from app.payments import get_active_provider, get_provider_display_name
-    active_provider = get_active_provider(db)
-    provider_name = get_provider_display_name(db, active_provider)
-
     stripe_pk = ""
-    if active_provider == "stripe":
-        s = db.query(SiteSetting).filter(SiteSetting.key == "stripe_public_key").first()
-        if s and s.value:
-            stripe_pk = s.value
-        elif settings.STRIPE_PUBLIC_KEY:
-            stripe_pk = settings.STRIPE_PUBLIC_KEY
+    s = db.query(SiteSetting).filter(SiteSetting.key == "stripe_public_key").first()
+    if s and s.value:
+        stripe_pk = s.value
+    elif settings.STRIPE_PUBLIC_KEY:
+        stripe_pk = settings.STRIPE_PUBLIC_KEY
 
-    ctx.update({
-        "items": items,
-        "total": total,
-        "stripe_pk": stripe_pk,
-        "is_guest": ctx["user"] is None,
-        "active_provider": active_provider,
-        "provider_name": provider_name,
-    })
+    ctx.update({"items": items, "total": total, "stripe_pk": stripe_pk, "is_guest": ctx["user"] is None})
     return templates.TemplateResponse("cart.html", ctx)
 
 
@@ -222,10 +238,14 @@ async def cart_page(request: Request, db: Session = Depends(get_db)):
 async def account_page(request: Request, db: Session = Depends(get_db)):
     ctx = _base_ctx(request, db)
     if not ctx["user"]:
-        from fastapi.responses import RedirectResponse
         return RedirectResponse("/auth/login", status_code=302)
     from app.models import Order
-    orders = db.query(Order).filter(Order.user_id == ctx["user"].id).order_by(Order.created_at.desc()).all()
+    orders = (
+        db.query(Order)
+        .filter(Order.user_id == ctx["user"].id)
+        .order_by(Order.created_at.desc())
+        .all()
+    )
     ctx.update({"orders": orders})
     return templates.TemplateResponse("account.html", ctx)
 
@@ -256,29 +276,5 @@ async def order_success(order_number: str, request: Request, db: Session = Depen
     ctx = _base_ctx(request, db)
     from app.models import Order
     order = db.query(Order).filter(Order.order_number == order_number).first()
-    if order and order.status != "paid":
-        from app.payments import sync_order_status
-        sync_order_status(db, order)
-        db.refresh(order)
     ctx.update({"order": order})
     return templates.TemplateResponse("order_success.html", ctx)
-
-
-@router.get("/payment/{order_number}")
-async def payment_page(order_number: str, request: Request, db: Session = Depends(get_db)):
-    ctx = _base_ctx(request, db)
-    from app.models import Order
-    from app.payments import get_active_provider, get_payment_instructions, get_provider_display_name, sync_order_status
-
-    order = db.query(Order).filter(Order.order_number == order_number).first()
-    if order and order.status != "paid":
-        sync_order_status(db, order)
-        db.refresh(order)
-
-    provider = get_active_provider(db)
-    ctx.update({
-        "order": order,
-        "payment_instructions": get_payment_instructions(db, provider),
-        "provider_name": get_provider_display_name(db, provider),
-    })
-    return templates.TemplateResponse("payment.html", ctx)

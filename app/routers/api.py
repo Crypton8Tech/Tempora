@@ -1,6 +1,6 @@
-"""API routes for cart, orders, payment checkout, and AJAX endpoints."""
+"""API routes for cart, orders, Stripe checkout, and AJAX endpoints."""
 
-from fastapi import APIRouter, Request, Depends, Form, Header
+from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -10,12 +10,15 @@ from app.auth import decode_session_token
 from app.config import settings
 
 import uuid
+import datetime
 import logging
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+# ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _get_user(request: Request, db: Session) -> User | None:
     token = request.session.get("token")
@@ -25,6 +28,29 @@ def _get_user(request: Request, db: Session) -> User | None:
     if uid is None:
         return None
     return db.query(User).filter(User.id == uid).first()
+
+
+def _get_currency(request: Request) -> str:
+    cur = request.cookies.get("currency", "eur")
+    from app.translations import SUPPORTED_CURRENCIES
+    return cur if cur in SUPPORTED_CURRENCIES else "eur"
+
+
+def _get_stripe_keys(db: Session) -> tuple[str, str, str]:
+    """Return (public_key, secret_key, webhook_secret) from DB settings or env."""
+    keys = {}
+    for row in db.query(SiteSetting).filter(
+        SiteSetting.key.in_(["stripe_public_key", "stripe_secret_key", "stripe_webhook_secret"])
+    ).all():
+        keys[row.key] = row.value or ""
+    pk = keys.get("stripe_public_key") or settings.STRIPE_PUBLIC_KEY
+    sk = keys.get("stripe_secret_key") or settings.STRIPE_SECRET_KEY
+    wh = keys.get("stripe_webhook_secret") or settings.STRIPE_WEBHOOK_SECRET
+    return pk, sk, wh
+
+
+def _make_order_number(prefix: str = "TS") -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
 
 
 # ── Guest cart helpers ────────────────────────────────────────────────────────
@@ -88,7 +114,9 @@ async def cart_update(
     user = _get_user(request, db)
 
     if user:
-        item = db.query(CartItem).filter(CartItem.id == item_id, CartItem.user_id == user.id).first()
+        item = db.query(CartItem).filter(
+            CartItem.id == item_id, CartItem.user_id == user.id
+        ).first()
         if not item:
             return JSONResponse({"error": "not_found"}, status_code=404)
         if quantity <= 0:
@@ -98,10 +126,12 @@ async def cart_update(
         db.commit()
     else:
         cart = _guest_cart_get(request)
-        cart = [i for i in cart if not (i["product_id"] == item_id and quantity <= 0)]
-        for i in cart:
-            if i["product_id"] == item_id:
-                i["quantity"] = quantity
+        if quantity <= 0:
+            cart = [i for i in cart if i["product_id"] != item_id]
+        else:
+            for i in cart:
+                if i["product_id"] == item_id:
+                    i["quantity"] = quantity
         _guest_cart_set(request, cart)
 
     return JSONResponse({"ok": True})
@@ -116,7 +146,9 @@ async def cart_remove(
     user = _get_user(request, db)
 
     if user:
-        item = db.query(CartItem).filter(CartItem.id == item_id, CartItem.user_id == user.id).first()
+        item = db.query(CartItem).filter(
+            CartItem.id == item_id, CartItem.user_id == user.id
+        ).first()
         if item:
             db.delete(item)
             db.commit()
@@ -128,23 +160,23 @@ async def cart_remove(
     return JSONResponse({"ok": True})
 
 
-# ── Checkout / Orders ─────────────────────────────────────────────────────────
+# ── Cart checkout ─────────────────────────────────────────────────────────────
 
 @router.post("/checkout")
 async def checkout(
     request: Request,
-    address: str = Form(""),
-    phone: str = Form(""),
-    note: str = Form(""),
-    guest_name: str = Form(""),
+    address:     str = Form(""),
+    phone:       str = Form(""),
+    note:        str = Form(""),
+    guest_name:  str = Form(""),
     guest_email: str = Form(""),
-    date_of_birth: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = _get_user(request, db)
+    currency = _get_currency(request)
 
     # Build items list
-    cart_products = []
+    cart_products: list[tuple[Product, int, CartItem | None]] = []
     if user:
         db_items = db.query(CartItem).filter(CartItem.user_id == user.id).all()
         for ci in db_items:
@@ -161,7 +193,7 @@ async def checkout(
         return RedirectResponse("/cart", status_code=302)
 
     total = sum(p.price * q for p, q, _ in cart_products)
-    order_number = f"TS-{uuid.uuid4().hex[:8].upper()}"
+    order_number = _make_order_number("TS")
 
     order = Order(
         order_number=order_number,
@@ -170,7 +202,7 @@ async def checkout(
         guest_email=guest_email.strip().lower() if not user else None,
         status="pending",
         total=total,
-        currency="rub",
+        currency=currency,
         address=address,
         phone=phone,
         note=note,
@@ -200,98 +232,181 @@ async def checkout(
 
     db.commit()
 
-    # Payment checkout via active provider
-    from app.payments import create_checkout
-    metadata = {}
-    if date_of_birth.strip():
-        metadata["date_of_birth"] = date_of_birth.strip()
-    redirect_url = create_checkout(db, order, cart_products, metadata)
-    if redirect_url:
-        return RedirectResponse(redirect_url, status_code=303)
+    # Try Stripe checkout
+    _, stripe_sk, _ = _get_stripe_keys(db)
+    if stripe_sk:
+        try:
+            import stripe
+            stripe.api_key = stripe_sk
 
-    # No external payment URL — show local payment page with instructions
-    return RedirectResponse(f"/payment/{order_number}", status_code=302)
+            # Convert prices to cents; use EUR as the Stripe currency
+            stripe_currency = currency if currency in ("eur", "usd", "gbp", "chf") else "eur"
+            from app.translations import CURRENCY_CONFIG
+            rate = CURRENCY_CONFIG.get(stripe_currency, CURRENCY_CONFIG["eur"])["rate"]
+
+            line_items = []
+            for product, qty, _ in cart_products:
+                converted_price = int(product.price * rate * 100)
+                line_items.append({
+                    "price_data": {
+                        "currency": stripe_currency,
+                        "product_data": {"name": product.name},
+                        "unit_amount": converted_price,
+                    },
+                    "quantity": qty,
+                })
+
+            site_url = settings.SITE_URL.rstrip("/")
+            session = stripe.checkout.Session.create(
+                payment_method_types=["card"],
+                line_items=line_items,
+                mode="payment",
+                success_url=f"{site_url}/order-success/{order_number}?paid=1",
+                cancel_url=f"{site_url}/cart",
+                metadata={"order_number": order_number},
+            )
+            order.stripe_session_id = session.id
+            db.commit()
+            return RedirectResponse(session.url, status_code=303)
+        except Exception as e:
+            logger.error(f"Stripe error: {e}")
+
+    return RedirectResponse(f"/order-success/{order_number}", status_code=302)
 
 
-# ── Payment Webhooks ──────────────────────────────────────────────────────────
+# ── Quick order (direct from product page, no cart) ───────────────────────────
+
+@router.post("/quick-order")
+async def quick_order(
+    request: Request,
+    product_id:  int = Form(...),
+    guest_name:  str = Form(""),
+    guest_email: str = Form(""),
+    phone:       str = Form(""),
+    address:     str = Form(""),
+    note:        str = Form(""),
+    quantity:    int = Form(1),
+    db: Session = Depends(get_db),
+):
+    """
+    Create an order for a single product without going through the cart.
+    Accessible to both authenticated users and guests.
+    """
+    product = db.query(Product).filter(Product.id == product_id, Product.is_active == True).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    if quantity < 1:
+        quantity = 1
+
+    user = _get_user(request, db)
+    currency = _get_currency(request)
+    total = product.price * quantity
+    order_number = _make_order_number("QO")
+
+    order = Order(
+        order_number=order_number,
+        user_id=user.id if user else None,
+        guest_name=guest_name.strip() if not user else None,
+        guest_email=guest_email.strip().lower() if not user else None,
+        status="pending",
+        total=total,
+        currency=currency,
+        address=address.strip(),
+        phone=phone.strip(),
+        note=note.strip(),
+        created_at=datetime.datetime.utcnow(),
+    )
+    db.add(order)
+    db.flush()
+
+    img_url = product.images[0].url if product.images else ""
+    db.add(OrderItem(
+        order_id=order.id,
+        product_id=product.id,
+        product_name=product.name,
+        product_sku=product.sku,
+        price=product.price,
+        quantity=quantity,
+        image_url=img_url,
+    ))
+    db.commit()
+
+    # Try Stripe checkout
+    _, stripe_sk, _ = _get_stripe_keys(db)
+    if stripe_sk:
+        try:
+            import stripe
+            stripe.api_key = stripe_sk
+
+            stripe_currency = currency if currency in ("eur", "usd", "gbp", "chf") else "eur"
+            from app.translations import CURRENCY_CONFIG
+            rate = CURRENCY_CONFIG.get(stripe_currency, CURRENCY_CONFIG["eur"])["rate"]
+            converted_price = int(product.price * rate * 100)
+
+            site_url = settings.SITE_URL.rstrip("/")
+            session = stripe.checkout.Session.create(
+                payment_method_types=["card"],
+                line_items=[{
+                    "price_data": {
+                        "currency": stripe_currency,
+                        "product_data": {"name": product.name},
+                        "unit_amount": converted_price,
+                    },
+                    "quantity": quantity,
+                }],
+                mode="payment",
+                success_url=f"{site_url}/order-success/{order_number}?paid=1",
+                cancel_url=f"{site_url}/product/{product.sku}",
+                metadata={"order_number": order_number},
+            )
+            order.stripe_session_id = session.id
+            db.commit()
+            return RedirectResponse(session.url, status_code=303)
+        except Exception as e:
+            logger.error(f"Stripe quick-order error: {e}")
+
+    return RedirectResponse(f"/order-success/{order_number}", status_code=302)
+
+
+# ── Stripe Webhook ────────────────────────────────────────────────────────────
 
 @router.post("/stripe/webhook")
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
-    from app.payments import handle_webhook
+    import stripe
+
+    _, stripe_sk, webhook_secret = _get_stripe_keys(db)
+    if not stripe_sk:
+        return JSONResponse({"error": "stripe not configured"}, status_code=400)
+
+    stripe.api_key = stripe_sk
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature", "")
-    ok = handle_webhook("stripe", db, payload, sig_header)
-    if not ok:
-        return JSONResponse({"error": "failed"}, status_code=400)
+
+    try:
+        if webhook_secret:
+            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+        else:
+            import json
+            event = json.loads(payload)
+    except Exception as e:
+        logger.error(f"Stripe webhook error: {e}")
+        return JSONResponse({"error": "invalid payload"}, status_code=400)
+
+    if event.get("type") == "checkout.session.completed":
+        session_data = event["data"]["object"]
+        order_number = session_data.get("metadata", {}).get("order_number")
+        if order_number:
+            order = db.query(Order).filter(Order.order_number == order_number).first()
+            if order:
+                order.status = "paid"
+                order.stripe_payment_intent = session_data.get("payment_intent", "")
+                db.commit()
+
     return JSONResponse({"ok": True})
 
 
-@router.post("/yookassa/webhook")
-async def yookassa_webhook(request: Request, db: Session = Depends(get_db)):
-    from app.payments import handle_webhook
-    payload = await request.body()
-    ok = handle_webhook("yookassa", db, payload, "")
-    if not ok:
-        return JSONResponse({"error": "failed"}, status_code=400)
-    return JSONResponse({"ok": True})
-
-
-@router.post("/cloudpayments/webhook")
-async def cloudpayments_webhook(request: Request, db: Session = Depends(get_db)):
-    from app.payments import handle_webhook
-    payload = await request.body()
-    ok = handle_webhook("cloudpayments", db, payload, "")
-    if not ok:
-        return JSONResponse({"error": "failed"}, status_code=400)
-    return JSONResponse({"ok": True})
-
-
-@router.post("/paypal/webhook")
-async def paypal_webhook(request: Request, db: Session = Depends(get_db)):
-    from app.payments import handle_webhook
-    payload = await request.body()
-    ok = handle_webhook("paypal", db, payload, "")
-    if not ok:
-        return JSONResponse({"error": "failed"}, status_code=400)
-    return JSONResponse({"ok": True})
-
-
-@router.post("/csscapital/webhook")
-async def csscapital_webhook(request: Request, db: Session = Depends(get_db)):
-    from app.payments import handle_webhook
-    payload = await request.body()
-    sig_header = request.headers.get("x-signature", request.headers.get("x-webhook-signature", ""))
-    ok = handle_webhook("csscapital", db, payload, sig_header)
-    if not ok:
-        return JSONResponse({"error": "failed"}, status_code=400)
-    return JSONResponse({"ok": True})
-
-
-@router.post("/custom-webhook/{provider_slug}")
-async def custom_provider_webhook(provider_slug: str, request: Request, db: Session = Depends(get_db)):
-    from app.payments import handle_webhook
-    payload = await request.body()
-    sig_header = request.headers.get("x-signature", request.headers.get("x-webhook-signature", ""))
-    ok = handle_webhook(provider_slug, db, payload, sig_header)
-    if not ok:
-        return JSONResponse({"error": "failed"}, status_code=400)
-    return JSONResponse({"ok": True})
-
-
-# ── Payment status check (for auto-refresh on payment page) ──────────────────
-
-@router.get("/payment-status/{order_number}")
-async def payment_status(order_number: str, db: Session = Depends(get_db)):
-    order = db.query(Order).filter(Order.order_number == order_number).first()
-    if not order:
-        return JSONResponse({"error": "not_found"}, status_code=404)
-    from app.payments import sync_order_status
-    sync_order_status(db, order)
-    db.refresh(order)
-    return JSONResponse({"status": order.status, "order_number": order.order_number})
-
-
-# ── JSON API for products (for AJAX) ─────────────────────────────────────────
+# ── JSON API for products (AJAX) ──────────────────────────────────────────────
 
 @router.get("/products")
 async def api_products(

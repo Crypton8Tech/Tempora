@@ -8,12 +8,13 @@
     <div class="hero-particles" id="heroParticles"></div>
     <div class="hero-content">
         <div class="hero-badge animate-fade-up">{{ t('hero_badge', lang) }}</div>
-        <h1 class="hero-title animate-fade-up delay-1">TEMPORA<span class="gold-dot">.</span></h1>
+        <h1 class="hero-title animate-fade-up delay-1">TEMPORA</h1>
+        <span class="hero-title-rule animate-fade-up delay-2"></span>
         <p class="hero-subtitle animate-fade-up delay-2">{{ t('hero_subtitle', lang) }}</p>
         <div class="hero-actions animate-fade-up delay-3">
             <a href="/catalog" class="btn btn-primary btn-lg">{{ t('hero_catalog_btn', lang) }}</a>
-            <a href="https://t.me/tempora_shop" class="btn btn-outline btn-lg" target="_blank">
-                <i class="fab fa-telegram-plane"></i> {{ t('hero_telegram_btn', lang) }}
+            <a href="https://t.me/{{ bot_username }}" class="btn btn-outline btn-lg" target="_blank">
+                <i class="fab fa-telegram-plane"></i> Telegram
             </a>
         </div>
     </div>
@@ -30,19 +31,17 @@
         <span>AUDEMARS PIGUET</span><span class="dot">◆</span>
         <span>CHANEL</span><span class="dot">◆</span>
         <span>PATEK PHILIPPE</span><span class="dot">◆</span>
-        <span>GUCCI</span><span class="dot">◆</span>
-        <span>LOUIS VUITTON</span><span class="dot">◆</span>
-        <span>PRADA</span><span class="dot">◆</span>
-        <span>BALENCIAGA</span><span class="dot">◆</span>
+        <span>RICHARD MILLE</span><span class="dot">◆</span>
+        <span>CARTIER</span><span class="dot">◆</span>
+        <span>IWC</span><span class="dot">◆</span>
         <span>ROLEX</span><span class="dot">◆</span>
         <span>HERMÈS</span><span class="dot">◆</span>
         <span>AUDEMARS PIGUET</span><span class="dot">◆</span>
         <span>CHANEL</span><span class="dot">◆</span>
         <span>PATEK PHILIPPE</span><span class="dot">◆</span>
-        <span>GUCCI</span><span class="dot">◆</span>
-        <span>LOUIS VUITTON</span><span class="dot">◆</span>
-        <span>PRADA</span><span class="dot">◆</span>
-        <span>BALENCIAGA</span><span class="dot">◆</span>
+        <span>RICHARD MILLE</span><span class="dot">◆</span>
+        <span>CARTIER</span><span class="dot">◆</span>
+        <span>IWC</span><span class="dot">◆</span>
     </div>
 </div>
 
@@ -86,19 +85,28 @@
         </div>
         <div class="products-grid">
             {% for product in featured %}
-            <a href="/product/{{ product.sku }}" class="product-card animate-on-scroll">
-                <div class="product-card-img">
-                    <img src="{{ product.images[0].url if product.images else '/static/uploads/placeholder.svg' }}" alt="{{ loc(product, 'name', lang) }}" loading="lazy">
-                    <div class="product-card-overlay">
-                        <span class="overlay-text">{{ t('view_details', lang) }}</span>
+            <div class="product-card animate-on-scroll">
+                <a href="/product/{{ product.sku }}" class="product-card-link">
+                    <div class="product-card-img">
+                        <img src="{{ product.images[0].url if product.images else '/static/uploads/placeholder.svg' }}"
+                             alt="{{ loc(product, 'name', lang) }}" loading="lazy">
+                        <div class="product-card-overlay">
+                            <span class="overlay-text">{{ t('view_details', lang) }}</span>
+                        </div>
                     </div>
+                    <div class="product-card-info">
+                        <span class="product-brand">{{ product.brand }}</span>
+                        <h3 class="product-name">{{ loc(product, 'name', lang) }}</h3>
+                        <p class="product-price">{{ format_price(product.price, currency) }}</p>
+                    </div>
+                </a>
+                <!-- Buy Now button — short funnel, no cart needed -->
+                <div class="product-card-actions">
+                    <a href="/quick-order/{{ product.sku }}" class="btn btn-primary btn-sm btn-full">
+                        <i class="fas fa-bolt"></i> {{ t('buy_now', lang) }}
+                    </a>
                 </div>
-                <div class="product-card-info">
-                    <span class="product-brand">{{ product.brand }}</span>
-                    <h3 class="product-name">{{ loc(product, 'name', lang) }}</h3>
-                    <p class="product-price">{{ format_price(product.price, currency) }}</p>
-                </div>
-            </a>
+            </div>
             {% endfor %}
         </div>
         <div class="section-footer" style="margin-top: 32px;">
@@ -122,7 +130,7 @@
     <div class="container">
         <div class="advantages-grid">
             <div class="advantage-card animate-on-scroll">
-                <div class="advantage-icon"><i class="fas fa-shield-halved"></i></div>
+                <div class="advantage-icon"><i class="fas fa-medal"></i></div>
                 <h3>{{ t('adv_auth', lang) }}</h3>
                 <p>{{ t('adv_auth_text', lang) }}</p>
             </div>
@@ -186,7 +194,6 @@
 
 {% block scripts %}
 <script>
-// Parallax scroll effect
 function initParallax() {
     const banner = document.querySelector('.parallax-banner');
     if (!banner) return;
@@ -200,7 +207,6 @@ function initParallax() {
     }, { passive: true });
 }
 
-// Animated counters
 function initCounters() {
     const counters = document.querySelectorAll('.stat-number[data-count]');
     const observer = new IntersectionObserver((entries) => {
@@ -225,14 +231,10 @@ function initCounters() {
     counters.forEach(el => observer.observe(el));
 }
 
-// Gold particle effect in hero
 function initHeroParticles() {
     const canvas = document.getElementById('heroParticles');
     if (!canvas) return;
-    const container = canvas.parentElement;
-    const particles = [];
     const count = 30;
-
     for (let i = 0; i < count; i++) {
         const p = document.createElement('div');
         p.className = 'hero-particle';

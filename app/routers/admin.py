@@ -2,7 +2,11 @@
 
 import os
 import uuid
-import shutil
+import json
+import time
+import logging
+import urllib.request
+import urllib.parse
 
 from fastapi import APIRouter, Request, Depends, Form, UploadFile, File
 from fastapi.responses import RedirectResponse
@@ -12,10 +16,11 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import Product, ProductImage, Category, Order, SiteSetting
-
 from app.translations import t as _t, format_price as _fp, loc as _loc
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
 templates = Jinja2Templates(
     directory=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
 )
@@ -23,6 +28,69 @@ templates.env.globals["t"] = _t
 templates.env.globals["format_price"] = _fp
 templates.env.globals["loc"] = _loc
 
+LANGS = ["en", "de", "fr", "it", "es"]
+
+LANG_MAP = {
+    "en": "en-US",
+    "de": "de-DE",
+    "fr": "fr-FR",
+    "it": "it-IT",
+    "es": "es-ES",
+}
+
+
+# ── Free translation via MyMemory ─────────────────────────────────────────────
+
+def _translate_text(text: str, lang: str) -> str:
+    """Translate a single text from RU to target lang using MyMemory (free, no key)."""
+    if not text or not text.strip():
+        return text
+    try:
+        params = urllib.parse.urlencode({
+            "q": text[:450],
+            "langpair": f"ru|{LANG_MAP[lang]}",
+        })
+        url = f"https://api.mymemory.translated.net/get?{params}"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = json.loads(r.read())
+        result = data.get("responseData", {}).get("translatedText", "")
+        # MyMemory returns error string when quota exceeded
+        if result and "MYMEMORY WARNING" not in result:
+            return result
+        return text
+    except Exception as e:
+        logger.error(f"MyMemory error [{lang}]: {e}")
+        return text
+
+
+def _auto_translate(product: Product) -> None:
+    """
+    Fill empty name_XX / description_XX fields using MyMemory free API.
+    Only translates fields that are currently empty — never overwrites existing.
+    """
+    needs = [l for l in LANGS if not getattr(product, f"name_{l}", None)]
+    if not needs:
+        return
+
+    logger.info(f"Auto-translating product {product.sku} → {needs}")
+
+    for lang in needs:
+        try:
+            name_t = _translate_text(product.name, lang)
+            desc_t = _translate_text(product.description or "", lang)
+            setattr(product, f"name_{lang}",        name_t)
+            setattr(product, f"description_{lang}", desc_t)
+            logger.info(f"  ✓ {lang}: {name_t}")
+            time.sleep(0.6)  # respect rate limit
+        except Exception as e:
+            logger.error(f"  ✗ {lang}: {e}")
+            # Fallback — copy original so field is never null
+            setattr(product, f"name_{lang}",        product.name)
+            setattr(product, f"description_{lang}", product.description or "")
+
+
+# ── Auth helpers ──────────────────────────────────────────────────────────────
 
 def _is_admin(request: Request) -> bool:
     return request.session.get("is_admin") is True
@@ -64,17 +132,12 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     if not _is_admin(request):
         return RedirectResponse("/admin/login", status_code=302)
     ctx = _admin_ctx(request)
-
     orders = db.query(Order).order_by(Order.created_at.desc()).all()
-    products_count = db.query(Product).count()
-    orders_count = len(orders)
-    total_revenue = sum(o.total for o in orders)
-
     ctx.update({
-        "orders": orders,
-        "products_count": products_count,
-        "orders_count": orders_count,
-        "total_revenue": total_revenue,
+        "orders":         orders,
+        "products_count": db.query(Product).count(),
+        "orders_count":   len(orders),
+        "total_revenue":  sum(o.total for o in orders),
     })
     return templates.TemplateResponse("admin/dashboard.html", ctx)
 
@@ -86,8 +149,7 @@ async def admin_products(request: Request, db: Session = Depends(get_db)):
     if not _is_admin(request):
         return RedirectResponse("/admin/login", status_code=302)
     ctx = _admin_ctx(request)
-    products = db.query(Product).order_by(Product.created_at.desc()).all()
-    ctx["products"] = products
+    ctx["products"] = db.query(Product).order_by(Product.created_at.desc()).all()
     return templates.TemplateResponse("admin/products.html", ctx)
 
 
@@ -105,12 +167,10 @@ async def admin_add_product_page(request: Request, db: Session = Depends(get_db)
 async def admin_add_product_submit(
     request: Request,
     name: str = Form(...),
-    name_en: str = Form(""),
     sku: str = Form(...),
     brand: str = Form(""),
     model: str = Form(""),
     description: str = Form(""),
-    description_en: str = Form(""),
     price: float = Form(...),
     category_id: int = Form(...),
     db: Session = Depends(get_db),
@@ -118,9 +178,7 @@ async def admin_add_product_submit(
     if not _is_admin(request):
         return RedirectResponse("/admin/login", status_code=302)
 
-    # Check duplicate SKU
-    existing = db.query(Product).filter(Product.sku == sku).first()
-    if existing:
+    if db.query(Product).filter(Product.sku == sku).first():
         ctx = _admin_ctx(request)
         ctx["categories"] = db.query(Category).all()
         ctx["error"] = "SKU уже существует"
@@ -131,16 +189,17 @@ async def admin_add_product_submit(
         brand=brand.strip(),
         model=model.strip(),
         name=name.strip(),
-        name_en=name_en.strip() or None,
         description=description.strip(),
-        description_en=description_en.strip() or None,
         price=price,
         category_id=category_id,
     )
     db.add(product)
     db.flush()
 
-    # Handle file uploads
+    # Auto-translate into all 5 languages
+    _auto_translate(product)
+
+    # Handle image uploads
     form = await request.form()
     files = form.getlist("images")
     sort_order = 0
@@ -168,10 +227,10 @@ async def admin_add_product_submit(
 async def admin_edit_product_page(product_id: int, request: Request, db: Session = Depends(get_db)):
     if not _is_admin(request):
         return RedirectResponse("/admin/login", status_code=302)
-    ctx = _admin_ctx(request)
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         return RedirectResponse("/admin/products", status_code=302)
+    ctx = _admin_ctx(request)
     ctx["product"] = product
     ctx["categories"] = db.query(Category).all()
     ctx["error"] = ""
@@ -183,15 +242,14 @@ async def admin_edit_product_submit(
     product_id: int,
     request: Request,
     name: str = Form(...),
-    name_en: str = Form(""),
     sku: str = Form(...),
     brand: str = Form(""),
     model: str = Form(""),
     description: str = Form(""),
-    description_en: str = Form(""),
     price: float = Form(...),
     category_id: int = Form(...),
     is_active: bool = Form(True),
+    retranslate: bool = Form(False),
     db: Session = Depends(get_db),
 ):
     if not _is_admin(request):
@@ -201,18 +259,27 @@ async def admin_edit_product_submit(
     if not product:
         return RedirectResponse("/admin/products", status_code=302)
 
-    product.name = name.strip()
-    product.name_en = name_en.strip() or None
-    product.sku = sku.strip()
-    product.brand = brand.strip()
-    product.model = model.strip()
-    product.description = description.strip()
-    product.description_en = description_en.strip() or None
-    product.price = price
-    product.category_id = category_id
-    product.is_active = is_active
+    name_changed = product.name != name.strip()
+    desc_changed = product.description != description.strip()
 
-    # Handle new images
+    product.name        = name.strip()
+    product.sku         = sku.strip()
+    product.brand       = brand.strip()
+    product.model       = model.strip()
+    product.description = description.strip()
+    product.price       = price
+    product.category_id = category_id
+    product.is_active   = is_active
+
+    # Clear translations if content changed or retranslate requested
+    if retranslate or name_changed or desc_changed:
+        for lang in LANGS:
+            setattr(product, f"name_{lang}",        None)
+            setattr(product, f"description_{lang}", None)
+
+    _auto_translate(product)
+
+    # Handle new image uploads
     form = await request.form()
     files = form.getlist("images")
     max_sort = max((img.sort_order for img in product.images), default=-1) + 1
@@ -242,7 +309,6 @@ async def admin_delete_product(product_id: int, request: Request, db: Session = 
         return RedirectResponse("/admin/login", status_code=302)
     product = db.query(Product).filter(Product.id == product_id).first()
     if product:
-        # Delete image files too
         for img in product.images:
             if img.url.startswith("/static/uploads/"):
                 fpath = os.path.join(
@@ -284,8 +350,7 @@ async def admin_orders(request: Request, db: Session = Depends(get_db)):
     if not _is_admin(request):
         return RedirectResponse("/admin/login", status_code=302)
     ctx = _admin_ctx(request)
-    orders = db.query(Order).order_by(Order.created_at.desc()).all()
-    ctx["orders"] = orders
+    ctx["orders"] = db.query(Order).order_by(Order.created_at.desc()).all()
     return templates.TemplateResponse("admin/orders.html", ctx)
 
 
@@ -318,7 +383,7 @@ async def admin_delete_order(order_id: int, request: Request, db: Session = Depe
     return RedirectResponse("/admin/orders", status_code=302)
 
 
-# ── Settings (Payment providers) ──────────────────────────────────────────────
+# ── Settings ──────────────────────────────────────────────────────────────────
 
 def _get_setting(db: Session, key: str) -> str:
     row = db.query(SiteSetting).filter(SiteSetting.key == key).first()
@@ -337,166 +402,26 @@ def _set_setting(db: Session, key: str, value: str):
 async def admin_settings_page(request: Request, db: Session = Depends(get_db)):
     if not _is_admin(request):
         return RedirectResponse("/admin/login", status_code=302)
-
-    from app.payments import (
-        PROVIDERS, PROVIDER_FIELDS, PROVIDER_INSTRUCTIONS,
-        get_active_provider, get_provider_settings,
-        get_custom_providers, get_custom_provider_fields,
-    )
-
     ctx = _admin_ctx(request)
-    active = get_active_provider(db)
-    custom_providers = get_custom_providers(db)
-
-    all_providers = dict(PROVIDERS)
-    all_providers.update(custom_providers)
-    ctx["providers"] = all_providers
-    ctx["builtin_providers"] = list(PROVIDERS.keys())
-    ctx["active_provider"] = active
-
-    # Merge built-in + custom fields
-    all_fields = dict(PROVIDER_FIELDS)
-    for slug in custom_providers:
-        all_fields[slug] = get_custom_provider_fields(db, slug)
-    ctx["provider_fields"] = all_fields
-    ctx["provider_instructions"] = PROVIDER_INSTRUCTIONS
-    ctx["site_url"] = settings.SITE_URL.rstrip("/")
-
-    # Load saved values for all providers
-    provider_values = {}
-    for slug in all_providers:
-        provider_values[slug] = get_provider_settings(db, slug)
-    ctx["provider_values"] = provider_values
-
-    # Load payment instructions for all providers
-    from app.payments import get_payment_instructions
-    payment_instructions_values = {}
-    for slug in all_providers:
-        payment_instructions_values[slug] = get_payment_instructions(db, slug)
-    ctx["payment_instructions_values"] = payment_instructions_values
-
+    ctx["stripe_public_key"]     = _get_setting(db, "stripe_public_key")
+    ctx["stripe_secret_key"]     = _get_setting(db, "stripe_secret_key")
+    ctx["stripe_webhook_secret"] = _get_setting(db, "stripe_webhook_secret")
     ctx["success"] = request.query_params.get("success", "")
-    ctx["custom_providers"] = custom_providers
     return templates.TemplateResponse("admin/settings.html", ctx)
 
 
 @router.post("/settings")
 async def admin_settings_save(
     request: Request,
+    stripe_public_key:     str = Form(""),
+    stripe_secret_key:     str = Form(""),
+    stripe_webhook_secret: str = Form(""),
     db: Session = Depends(get_db),
 ):
     if not _is_admin(request):
         return RedirectResponse("/admin/login", status_code=302)
-
-    from app.payments import (
-        PROVIDERS, PROVIDER_FIELDS,
-        get_custom_providers, get_custom_provider_fields,
-    )
-
-    form = await request.form()
-    provider = form.get("payment_provider", "stripe")
-
-    all_providers = dict(PROVIDERS)
-    all_providers.update(get_custom_providers(db))
-
-    if provider not in all_providers:
-        provider = "stripe"
-
-    _set_setting(db, "payment_provider", provider)
-
-    # Save fields for the selected provider
-    if provider in PROVIDER_FIELDS:
-        fields = PROVIDER_FIELDS[provider]
-    else:
-        fields = get_custom_provider_fields(db, provider)
-
-    for fdef in fields:
-        key = fdef[0]
-        val = form.get(key, "")
-        _set_setting(db, key, str(val).strip())
-
-    # Save payment instructions for the selected provider
-    instructions_key = f"{provider}_payment_instructions"
-    instructions_val = form.get(instructions_key, "")
-    _set_setting(db, instructions_key, str(instructions_val).strip())
-
-    db.commit()
-    return RedirectResponse("/admin/settings?success=1", status_code=302)
-
-
-@router.post("/settings/add-provider")
-async def admin_add_custom_provider(
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    """Add a new custom payment provider."""
-    if not _is_admin(request):
-        return RedirectResponse("/admin/login", status_code=302)
-
-    from app.payments import (
-        PROVIDERS, get_custom_providers, save_custom_providers,
-        save_custom_provider_fields, _default_custom_fields,
-    )
-    import re
-
-    form = await request.form()
-    name = form.get("new_provider_name", "").strip()
-    if not name:
-        return RedirectResponse("/admin/settings", status_code=302)
-
-    # Generate slug from name
-    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
-    if not slug or slug in PROVIDERS:
-        slug = f"custom_{slug}"
-
-    customs = get_custom_providers(db)
-    customs[slug] = name
-    save_custom_providers(db, customs)
-
-    # Parse custom fields from form
-    field_names = form.getlist("field_name")
-    field_types = form.getlist("field_type")
-    field_placeholders = form.getlist("field_placeholder")
-
-    if field_names and any(n.strip() for n in field_names):
-        fields = []
-        for i, fname in enumerate(field_names):
-            fname = fname.strip()
-            if not fname:
-                continue
-            fkey = f"custom_{slug}_{re.sub(r'[^a-z0-9]+', '_', fname.lower()).strip('_')}"
-            ftype = field_types[i].strip() if i < len(field_types) else "text"
-            if ftype not in ("text", "password"):
-                ftype = "text"
-            fplaceholder = field_placeholders[i].strip() if i < len(field_placeholders) else ""
-            fields.append({"key": fkey, "label": fname, "type": ftype, "placeholder": fplaceholder})
-        if fields:
-            save_custom_provider_fields(db, slug, fields)
-    else:
-        # Use default fields
-        defaults = _default_custom_fields(slug)
-        fields = [{"key": f[0], "label": f[1], "type": f[2], "placeholder": f[3]} for f in defaults]
-        save_custom_provider_fields(db, slug, fields)
-
-    db.commit()
-    return RedirectResponse("/admin/settings?success=1", status_code=302)
-
-
-@router.post("/settings/delete-provider/{slug}")
-async def admin_delete_custom_provider(
-    slug: str,
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    """Delete a custom payment provider."""
-    if not _is_admin(request):
-        return RedirectResponse("/admin/login", status_code=302)
-
-    from app.payments import PROVIDERS, delete_custom_provider
-
-    if slug in PROVIDERS:
-        return RedirectResponse("/admin/settings", status_code=302)
-
-    delete_custom_provider(db, slug)
+    _set_setting(db, "stripe_public_key",     stripe_public_key.strip())
+    _set_setting(db, "stripe_secret_key",     stripe_secret_key.strip())
+    _set_setting(db, "stripe_webhook_secret", stripe_webhook_secret.strip())
     db.commit()
     return RedirectResponse("/admin/settings?success=1", status_code=302)
