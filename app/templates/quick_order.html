@@ -99,6 +99,11 @@
       <button type="submit" class="btn btn-primary btn-lg btn-full" style="margin-top: 8px;">
         <i class="fas fa-check"></i> {{ t('checkout_btn', lang) }}
       </button>
+      {% if provider_name %}
+      <p style="text-align: center; margin-top: 10px; color: var(--text-dim); font-size: 0.84rem;">
+        <i class="fas fa-lock"></i> {{ t('payment_provider_label', lang) }}: {{ provider_name }}
+      </p>
+      {% endif %}
       {% endif %}
 
     </form>

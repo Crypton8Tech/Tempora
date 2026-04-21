@@ -4,6 +4,14 @@
 {% block content %}
 <div class="admin-page-header">
     <h2 class="admin-page-title">Заказы</h2>
+    {% if orders %}
+    <form id="bulkDeleteForm" method="post" action="/admin/orders/delete-selected" style="margin:0;">
+        <button id="bulkDeleteBtn" type="submit" class="admin-btn admin-btn-danger admin-btn-sm" disabled
+                onclick="return confirm('Удалить выбранные заказы?')">
+            <i class="fas fa-trash"></i> Удалить выбранные
+        </button>
+    </form>
+    {% endif %}
 </div>
 
 <div class="admin-card">
@@ -11,6 +19,9 @@
     <table class="admin-table">
         <thead>
             <tr>
+                <th style="width:40px;">
+                    <input id="selectAllOrders" type="checkbox" title="Выбрать все">
+                </th>
                 <th>Номер</th>
                 <th>Дата</th>
                 <th>Товары</th>
@@ -23,6 +34,9 @@
         <tbody>
             {% for order in orders %}
             <tr>
+                <td>
+                    <input class="order-select-checkbox" type="checkbox" name="order_ids" value="{{ order.id }}" form="bulkDeleteForm">
+                </td>
                 <td><strong>{{ order.order_number }}</strong></td>
                 <td>{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
                 <td>
@@ -58,4 +72,39 @@
     <p style="color: #6b7280; text-align: center; padding: 48px;">Заказов пока нет</p>
     {% endif %}
 </div>
+
+{% if orders %}
+<script>
+(function() {
+    var selectAll = document.getElementById('selectAllOrders');
+    var checkboxes = Array.prototype.slice.call(document.querySelectorAll('.order-select-checkbox'));
+    var bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+
+    function updateDeleteButtonState() {
+        var selectedCount = checkboxes.filter(function(cb) { return cb.checked; }).length;
+        bulkDeleteBtn.disabled = selectedCount === 0;
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', function() {
+            checkboxes.forEach(function(cb) {
+                cb.checked = selectAll.checked;
+            });
+            updateDeleteButtonState();
+        });
+    }
+
+    checkboxes.forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            if (!cb.checked && selectAll) {
+                selectAll.checked = false;
+            } else if (selectAll) {
+                selectAll.checked = checkboxes.length > 0 && checkboxes.every(function(item) { return item.checked; });
+            }
+            updateDeleteButtonState();
+        });
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -17,6 +17,7 @@ class Settings:
     STRIPE_PUBLIC_KEY: str = os.getenv("STRIPE_PUBLIC_KEY", "")
     STRIPE_SECRET_KEY: str = os.getenv("STRIPE_SECRET_KEY", "")
     STRIPE_WEBHOOK_SECRET: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    CSSCAPITAL_API_KEY: str = os.getenv("CSSCAPITAL_API_KEY", "api_gf3Bi3tt9gZHBCe5")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 
 

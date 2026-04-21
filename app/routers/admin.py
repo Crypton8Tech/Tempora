@@ -397,6 +397,29 @@ async def admin_delete_order(order_id: int, request: Request, db: Session = Depe
     return RedirectResponse("/admin/orders", status_code=302)
 
 
+@router.post("/orders/delete-selected")
+async def admin_delete_selected_orders(request: Request, db: Session = Depends(get_db)):
+    if not _is_admin(request):
+        return RedirectResponse("/admin/login", status_code=302)
+
+    form = await request.form()
+    raw_ids = form.getlist("order_ids")
+    order_ids: list[int] = []
+    for value in raw_ids:
+        try:
+            order_ids.append(int(str(value)))
+        except (TypeError, ValueError):
+            continue
+
+    if order_ids:
+        orders = db.query(Order).filter(Order.id.in_(order_ids)).all()
+        for order in orders:
+            db.delete(order)
+        db.commit()
+
+    return RedirectResponse("/admin/orders", status_code=302)
+
+
 # ── Settings ──────────────────────────────────────────────────────────────────
 
 def _get_setting(db: Session, key: str) -> str:

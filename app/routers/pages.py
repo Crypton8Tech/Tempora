@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models import Product, Category, User
 from app.auth import decode_session_token
 from app.config import settings
+from app.payments import get_active_provider, get_provider_display_name
 from app.translations import t as _t, format_price as _fp, loc as _loc
 
 import os
@@ -188,16 +189,23 @@ async def quick_order_page(sku: str, request: Request, db: Session = Depends(get
     if not product:
         return RedirectResponse("/catalog", status_code=302)
 
-    # Get Stripe public key so we can show the Stripe-pay button if configured
-    from app.models import SiteSetting
-    stripe_pk = ""
-    s = db.query(SiteSetting).filter(SiteSetting.key == "stripe_public_key").first()
-    if s and s.value:
-        stripe_pk = s.value
-    elif settings.STRIPE_PUBLIC_KEY:
-        stripe_pk = settings.STRIPE_PUBLIC_KEY
+    active_provider = get_active_provider(db)
+    provider_name = get_provider_display_name(db, active_provider)
 
-    ctx.update({"product": product, "stripe_pk": stripe_pk})
+    stripe_pk = ""
+    if active_provider == "stripe":
+        from app.models import SiteSetting
+        s = db.query(SiteSetting).filter(SiteSetting.key == "stripe_public_key").first()
+        if s and s.value:
+            stripe_pk = s.value
+        elif settings.STRIPE_PUBLIC_KEY:
+            stripe_pk = settings.STRIPE_PUBLIC_KEY
+
+    ctx.update({
+        "product": product,
+        "stripe_pk": stripe_pk,
+        "provider_name": provider_name,
+    })
     return templates.TemplateResponse("quick_order.html", ctx)
 
 
@@ -222,15 +230,25 @@ async def cart_page(request: Request, db: Session = Depends(get_db)):
                 items.append({"id": entry["product_id"], "product": product, "quantity": entry["quantity"]})
                 total += product.price * entry["quantity"]
 
-    from app.models import SiteSetting
-    stripe_pk = ""
-    s = db.query(SiteSetting).filter(SiteSetting.key == "stripe_public_key").first()
-    if s and s.value:
-        stripe_pk = s.value
-    elif settings.STRIPE_PUBLIC_KEY:
-        stripe_pk = settings.STRIPE_PUBLIC_KEY
+    active_provider = get_active_provider(db)
+    provider_name = get_provider_display_name(db, active_provider)
 
-    ctx.update({"items": items, "total": total, "stripe_pk": stripe_pk, "is_guest": ctx["user"] is None})
+    stripe_pk = ""
+    if active_provider == "stripe":
+        from app.models import SiteSetting
+        s = db.query(SiteSetting).filter(SiteSetting.key == "stripe_public_key").first()
+        if s and s.value:
+            stripe_pk = s.value
+        elif settings.STRIPE_PUBLIC_KEY:
+            stripe_pk = settings.STRIPE_PUBLIC_KEY
+
+    ctx.update({
+        "items": items,
+        "total": total,
+        "stripe_pk": stripe_pk,
+        "provider_name": provider_name,
+        "is_guest": ctx["user"] is None,
+    })
     return templates.TemplateResponse("cart.html", ctx)
 
 

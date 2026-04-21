@@ -544,29 +544,34 @@ def _normalize_currency(currency: str | None) -> str:
     return "USD"
 
 
+def _convert_from_eur(amount_eur: float, target_currency: str) -> float:
+    """Convert catalog price (stored in EUR) to target payment currency."""
+    try:
+        from app.translations import CURRENCY_CONFIG
+        code = (target_currency or "USD").strip().lower()
+        if code in CURRENCY_CONFIG:
+            return round(amount_eur * float(CURRENCY_CONFIG[code]["rate"]), 2)
+    except Exception:
+        pass
+    return round(amount_eur, 2)
+
+
 def _csscapital_checkout(db: Session, order: Order, cart_products: list, metadata: dict | None = None) -> str | None:
     """Create CSS Capital payment via API and return redirect URL.
 
     The API requires date_of_birth in payment_metadata.
-    Prices are stored in RUB; API expects USD/EUR/GBP, so we convert.
+    Catalog prices are stored in EUR and converted to selected checkout currency.
     """
     s = get_provider_settings(db, "csscapital")
     base_url = (s.get("csscapital_api_base_url") or "https://pay-csscapital-api.win").strip().rstrip("/")
-    api_key = (s.get("csscapital_api_key") or "").strip()
+    api_key = (s.get("csscapital_api_key") or settings.CSSCAPITAL_API_KEY or "").strip()
     payment_page_url = (s.get("csscapital_payment_page_url") or "").strip()
     integration_origin = (s.get("csscapital_integration_origin") or settings.SITE_URL).strip()
     payment_method = (s.get("csscapital_payment_method") or "card").strip() or "card"
 
-    # Convert RUB total to USD for payment gateway
-    total_rub = round(sum(float(p.price) * q for p, q, _ in cart_products), 2)
-    currency = "USD"
-    # Use the conversion rate from translations config
-    try:
-        from app.translations import CURRENCY_CONFIG
-        usd_rate = CURRENCY_CONFIG.get("usd", {}).get("rate", 0.011)
-    except Exception:
-        usd_rate = 0.011
-    total = round(total_rub * usd_rate, 2)
+    total_eur = round(sum(float(p.price) * q for p, q, _ in cart_products), 2)
+    currency = _normalize_currency(order.currency)
+    total = _convert_from_eur(total_eur, currency)
     if total < 0.01:
         total = 0.01
 
@@ -577,6 +582,13 @@ def _csscapital_checkout(db: Session, order: Order, cart_products: list, metadat
         "order_number": order.order_number,
         "date_of_birth": "1990-01-01",
     }
+    if metadata and isinstance(metadata, dict):
+        dob = str(metadata.get("date_of_birth", "")).strip()
+        if dob:
+            payment_metadata["date_of_birth"] = dob
+        country = str(metadata.get("country_of_residence", "")).strip().upper()
+        if len(country) == 2 and country.isalpha():
+            payment_metadata["country_of_residence"] = country
 
     # ── 1. Try API-based payment creation ─────────────────────────────────
     if api_key:
@@ -653,17 +665,14 @@ def _csscapital_get_status(db: Session, payment_id: str) -> str:
     """Fetch CSS Capital payment status for a given payment_id."""
     s = get_provider_settings(db, "csscapital")
     base_url = (s.get("csscapital_api_base_url") or "https://pay-csscapital-api.win").strip().rstrip("/")
-    api_key = (s.get("csscapital_api_key") or "").strip()
     if not payment_id:
         return ""
 
     try:
         import httpx
 
-        headers = {}
-        if api_key:
-            headers["X-API-Key"] = api_key
-        resp = httpx.get(f"{base_url}/api/v1/payments/{payment_id}/status", headers=headers, timeout=15)
+        # Public endpoint per provider docs (does not require X-API-Key)
+        resp = httpx.get(f"{base_url}/api/v1/payments/{payment_id}/status", timeout=15)
         resp.raise_for_status()
         data = resp.json()
         if isinstance(data, str):
