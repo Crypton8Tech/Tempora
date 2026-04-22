@@ -564,6 +564,18 @@ img { max-width: 100%; height: auto; display: block; }
     overflow: hidden;
 }
 
+/* Intentional composition when only one category is shown */
+.categories-grid-single {
+    grid-template-columns: minmax(300px, 620px);
+    justify-content: center;
+    max-width: 760px;
+    margin: 0 auto;
+}
+
+.categories-grid-single .category-card {
+    border-right: none;
+}
+
 .category-card {
     background: var(--surface);
     padding: 52px 40px;
