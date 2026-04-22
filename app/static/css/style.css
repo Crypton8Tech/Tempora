@@ -566,14 +566,49 @@ img { max-width: 100%; height: auto; display: block; }
 
 /* Intentional composition when only one category is shown */
 .categories-grid-single {
-    grid-template-columns: minmax(300px, 620px);
-    justify-content: center;
-    max-width: 760px;
+    grid-template-columns: 1fr;
+    max-width: 620px;
     margin: 0 auto;
+    border: none;
+    background: transparent;
+    gap: 0;
 }
 
 .categories-grid-single .category-card {
-    border-right: none;
+    border: 1px solid var(--border-hi);
+    border-right: 1px solid var(--border-hi);
+    border-radius: 16px;
+    min-height: 250px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 36px;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(196, 160, 83, 0.07) 0%, transparent 60%),
+        linear-gradient(135deg, rgba(17, 13, 10, 0.95), rgba(13, 10, 8, 0.96));
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.34);
+}
+
+.categories-grid-single .category-desc {
+    max-width: 500px;
+    color: var(--text-2);
+}
+
+.categories-grid-single .category-bg-icon {
+    font-size: 6rem;
+    right: -8px;
+    bottom: -10px;
+}
+
+.categories-grid-single .category-arrow {
+    opacity: 1;
+    transform: translateX(0);
+    margin-top: 8px;
+}
+
+.categories-section .section-title {
+    margin-bottom: 22px;
 }
 
 .category-card {
@@ -1811,6 +1846,8 @@ textarea.admin-input { resize: vertical; }
     .categories-grid  { grid-template-columns: 1fr; }
     .category-card    { border-right: none; border-bottom: 1px solid var(--border); }
     .category-card:last-child { border-bottom: none; }
+    .categories-grid-single { max-width: 560px; }
+    .categories-grid-single .category-card { min-height: 220px; padding: 34px 26px; border-bottom: 1px solid var(--border-hi); }
 }
 
 @media (max-width: 768px) {
@@ -1840,6 +1877,8 @@ textarea.admin-input { resize: vertical; }
     .parallax-banner  { min-height: 240px; background-attachment: scroll; }
     .stats-grid       { grid-template-columns: 1fr 1fr; }
     .advantages-grid  { grid-template-columns: 1fr; }
+    .categories-grid-single { max-width: 100%; }
+    .categories-grid-single .category-card { min-height: 210px; padding: 30px 20px; }
 
     .product-detail   { gap: 28px; }
     .product-title    { font-size: 2rem; }
