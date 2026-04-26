@@ -11,6 +11,12 @@
                     <label>{{ t('track_order_number', lang) }}</label>
                     <input type="text" name="order_number" class="form-input" placeholder="TS-XXXXXXXX" required autofocus>
                 </div>
+                {% if not user %}
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" class="form-input" placeholder="name@example.com" required>
+                </div>
+                {% endif %}
                 <button type="submit" class="btn btn-primary btn-full">{{ t('track_btn', lang) }}</button>
             </form>
         </div>

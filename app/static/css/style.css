@@ -1704,7 +1704,11 @@ select.form-input {
     transition: all var(--t-fast);
     text-decoration: none;
     letter-spacing: 0.5px;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
 }
+.switcher form { display: inline-flex; margin: 0; }
 .sw-btn:hover { color: var(--gold-light); background: rgba(196,160,83,0.08); }
 .sw-btn.active {
     color: var(--bg);
@@ -1884,7 +1888,7 @@ textarea.admin-input { resize: vertical; }
     .product-title    { font-size: 2rem; }
     .product-actions-row { flex-wrap: wrap; }
 
-    .switcher.lang-switcher .sw-btn:nth-child(n+4) { display: none; }
+    .switcher.lang-switcher form:nth-child(n+4) .sw-btn { display: none; }
 }
 
 @media (max-width: 480px) {

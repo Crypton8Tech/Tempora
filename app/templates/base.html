@@ -14,6 +14,7 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+    {% set next_url = request.url.path %}
     <!-- Header -->
     <header class="site-header" id="siteHeader">
         <div class="header-inner">
@@ -34,20 +35,20 @@
 
                 <!-- Language switcher (6 languages) -->
                 <div class="switcher lang-switcher">
-                    <a href="/set-lang/en" class="sw-btn {% if lang == 'en' %}active{% endif %}">EN</a>
-                    <a href="/set-lang/de" class="sw-btn {% if lang == 'de' %}active{% endif %}">DE</a>
-                    <a href="/set-lang/fr" class="sw-btn {% if lang == 'fr' %}active{% endif %}">FR</a>
-                    <a href="/set-lang/it" class="sw-btn {% if lang == 'it' %}active{% endif %}">IT</a>
-                    <a href="/set-lang/es" class="sw-btn {% if lang == 'es' %}active{% endif %}">ES</a>
-                    <a href="/set-lang/ru" class="sw-btn {% if lang == 'ru' %}active{% endif %}">RU</a>
+                    <form method="post" action="/set-lang" style="display:inline;"><input type="hidden" name="lang" value="en"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if lang == 'en' %}active{% endif %}">EN</button></form>
+                    <form method="post" action="/set-lang" style="display:inline;"><input type="hidden" name="lang" value="de"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if lang == 'de' %}active{% endif %}">DE</button></form>
+                    <form method="post" action="/set-lang" style="display:inline;"><input type="hidden" name="lang" value="fr"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if lang == 'fr' %}active{% endif %}">FR</button></form>
+                    <form method="post" action="/set-lang" style="display:inline;"><input type="hidden" name="lang" value="it"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if lang == 'it' %}active{% endif %}">IT</button></form>
+                    <form method="post" action="/set-lang" style="display:inline;"><input type="hidden" name="lang" value="es"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if lang == 'es' %}active{% endif %}">ES</button></form>
+                    <form method="post" action="/set-lang" style="display:inline;"><input type="hidden" name="lang" value="ru"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if lang == 'ru' %}active{% endif %}">RU</button></form>
                 </div>
 
                 <!-- Currency switcher (no RUB) -->
                 <div class="switcher currency-switcher">
-                    <a href="/set-currency/eur" class="sw-btn {% if currency == 'eur' %}active{% endif %}">€</a>
-                    <a href="/set-currency/usd" class="sw-btn {% if currency == 'usd' %}active{% endif %}">$</a>
-                    <a href="/set-currency/gbp" class="sw-btn {% if currency == 'gbp' %}active{% endif %}">£</a>
-                    <a href="/set-currency/chf" class="sw-btn {% if currency == 'chf' %}active{% endif %}">₣</a>
+                    <form method="post" action="/set-currency" style="display:inline;"><input type="hidden" name="cur" value="eur"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if currency == 'eur' %}active{% endif %}">€</button></form>
+                    <form method="post" action="/set-currency" style="display:inline;"><input type="hidden" name="cur" value="usd"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if currency == 'usd' %}active{% endif %}">$</button></form>
+                    <form method="post" action="/set-currency" style="display:inline;"><input type="hidden" name="cur" value="gbp"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if currency == 'gbp' %}active{% endif %}">£</button></form>
+                    <form method="post" action="/set-currency" style="display:inline;"><input type="hidden" name="cur" value="chf"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if currency == 'chf' %}active{% endif %}">₣</button></form>
                 </div>
 
                 <!-- Cart -->
@@ -98,19 +99,19 @@
         <div class="mobile-switchers">
             <!-- Language switcher (mobile) -->
             <div class="switcher lang-switcher">
-                <a href="/set-lang/en" class="sw-btn {% if lang == 'en' %}active{% endif %}">EN</a>
-                <a href="/set-lang/de" class="sw-btn {% if lang == 'de' %}active{% endif %}">DE</a>
-                <a href="/set-lang/fr" class="sw-btn {% if lang == 'fr' %}active{% endif %}">FR</a>
-                <a href="/set-lang/it" class="sw-btn {% if lang == 'it' %}active{% endif %}">IT</a>
-                <a href="/set-lang/es" class="sw-btn {% if lang == 'es' %}active{% endif %}">ES</a>
-                <a href="/set-lang/ru" class="sw-btn {% if lang == 'ru' %}active{% endif %}">RU</a>
+                <form method="post" action="/set-lang" style="display:inline;"><input type="hidden" name="lang" value="en"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if lang == 'en' %}active{% endif %}">EN</button></form>
+                <form method="post" action="/set-lang" style="display:inline;"><input type="hidden" name="lang" value="de"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if lang == 'de' %}active{% endif %}">DE</button></form>
+                <form method="post" action="/set-lang" style="display:inline;"><input type="hidden" name="lang" value="fr"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if lang == 'fr' %}active{% endif %}">FR</button></form>
+                <form method="post" action="/set-lang" style="display:inline;"><input type="hidden" name="lang" value="it"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if lang == 'it' %}active{% endif %}">IT</button></form>
+                <form method="post" action="/set-lang" style="display:inline;"><input type="hidden" name="lang" value="es"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if lang == 'es' %}active{% endif %}">ES</button></form>
+                <form method="post" action="/set-lang" style="display:inline;"><input type="hidden" name="lang" value="ru"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if lang == 'ru' %}active{% endif %}">RU</button></form>
             </div>
             <!-- Currency switcher (mobile, no RUB) -->
             <div class="switcher currency-switcher">
-                <a href="/set-currency/eur" class="sw-btn {% if currency == 'eur' %}active{% endif %}">€</a>
-                <a href="/set-currency/usd" class="sw-btn {% if currency == 'usd' %}active{% endif %}">$</a>
-                <a href="/set-currency/gbp" class="sw-btn {% if currency == 'gbp' %}active{% endif %}">£</a>
-                <a href="/set-currency/chf" class="sw-btn {% if currency == 'chf' %}active{% endif %}">₣</a>
+                <form method="post" action="/set-currency" style="display:inline;"><input type="hidden" name="cur" value="eur"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if currency == 'eur' %}active{% endif %}">€</button></form>
+                <form method="post" action="/set-currency" style="display:inline;"><input type="hidden" name="cur" value="usd"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if currency == 'usd' %}active{% endif %}">$</button></form>
+                <form method="post" action="/set-currency" style="display:inline;"><input type="hidden" name="cur" value="gbp"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if currency == 'gbp' %}active{% endif %}">£</button></form>
+                <form method="post" action="/set-currency" style="display:inline;"><input type="hidden" name="cur" value="chf"><input type="hidden" name="next_url" value="{{ next_url }}"><button type="submit" class="sw-btn {% if currency == 'chf' %}active{% endif %}">₣</button></form>
             </div>
         </div>
     </div>

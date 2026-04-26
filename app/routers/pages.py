@@ -1,5 +1,7 @@
 """Public page routes."""
 
+import re
+
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -10,6 +12,7 @@ from app.models import Product, Category, User
 from app.auth import decode_session_token
 from app.config import settings
 from app.payments import get_active_provider, get_provider_display_name
+from app.security import normalize_currency, normalize_lang, is_safe_category_slug, is_safe_sku
 from app.translations import t as _t, format_price as _fp, loc as _loc
 
 import os
@@ -21,6 +24,8 @@ templates = Jinja2Templates(
 templates.env.globals["t"] = _t
 templates.env.globals["format_price"] = _fp
 templates.env.globals["loc"] = _loc
+
+_ORDER_NUMBER_RE = re.compile(r"^[A-Z0-9-]{4,50}$")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -36,11 +41,11 @@ def get_current_user(request: Request, db: Session) -> User | None:
 
 
 def _get_lang(request: Request) -> str:
-    return request.cookies.get("lang", "en")
+    return normalize_lang(request.cookies.get("lang"), default="en")
 
 
 def _get_currency(request: Request) -> str:
-    return request.cookies.get("currency", "eur")
+    return normalize_currency(request.cookies.get("currency"), default="eur")
 
 
 def _guest_cart(request: Request) -> list:
@@ -116,9 +121,14 @@ async def catalog(
         pass
 
     if category:
-        cat = db.query(Category).filter(Category.slug == category).first()
-        if cat:
-            query = query.filter(Product.category_id == cat.id)
+        if is_safe_category_slug(category):
+            cat = db.query(Category).filter(Category.slug == category).first()
+            if cat:
+                query = query.filter(Product.category_id == cat.id)
+            else:
+                query = query.filter(Product.id == -1)
+        else:
+            query = query.filter(Product.id == -1)
 
     if brand:
         query = query.filter(Product.brand.ilike(f"%{brand}%"))
@@ -160,6 +170,8 @@ async def catalog(
 
 @router.get("/product/{sku}")
 async def product_detail(sku: str, request: Request, db: Session = Depends(get_db)):
+    if not is_safe_sku(sku):
+        return RedirectResponse("/catalog", status_code=302)
     ctx = _base_ctx(request, db)
     product = db.query(Product).filter(Product.sku == sku, Product.is_active == True).first()
     if not product:
@@ -184,6 +196,9 @@ async def quick_order_page(sku: str, request: Request, db: Session = Depends(get
     One-click order page: user lands here from the product card 'Buy Now' button.
     They fill in name / email / phone / address and submit — no cart required.
     """
+    if not is_safe_sku(sku):
+        return RedirectResponse("/catalog", status_code=302)
+
     ctx = _base_ctx(request, db)
     product = db.query(Product).filter(Product.sku == sku, Product.is_active == True).first()
     if not product:
@@ -281,11 +296,31 @@ async def track_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/track/result")
-async def track_result(request: Request, order_number: str = "", db: Session = Depends(get_db)):
+async def track_result(
+    request: Request,
+    order_number: str = "",
+    email: str = "",
+    db: Session = Depends(get_db),
+):
     ctx = _base_ctx(request, db)
     from app.models import Order
-    order = db.query(Order).filter(Order.order_number == order_number).first()
-    ctx.update({"order": order, "order_number": order_number})
+    order_number = (order_number or "").strip().upper()
+    if not _ORDER_NUMBER_RE.fullmatch(order_number):
+        order = None
+    else:
+        order = db.query(Order).filter(Order.order_number == order_number).first()
+
+    if order:
+        user = ctx.get("user")
+        if user:
+            if order.user_id != user.id:
+                order = None
+        else:
+            email_ok = bool(email and order.guest_email and email.strip().lower() == order.guest_email.lower())
+            if not email_ok:
+                order = None
+
+    ctx.update({"order": order, "order_number": order_number, "track_email": email or ""})
     return templates.TemplateResponse("track_result.html", ctx)
 
 

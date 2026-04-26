@@ -10,9 +10,11 @@ import os
 from app.database import get_db
 from app.models import User, CartItem
 from app.auth import hash_password, verify_password, create_session_token
+from app.security import InMemoryRateLimiter, client_ip, normalize_currency, normalize_lang
 from app.translations import t as _t, format_price as _fp, loc as _loc
 
 router = APIRouter()
+auth_limiter = InMemoryRateLimiter()
 templates = Jinja2Templates(
     directory=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
 )
@@ -22,8 +24,8 @@ templates.env.globals["loc"] = _loc
 
 
 def _base_ctx(request: Request) -> dict:
-    lang = request.cookies.get("lang", "ru")
-    currency = request.cookies.get("currency", "rub")
+    lang = normalize_lang(request.cookies.get("lang"), default="en")
+    currency = normalize_currency(request.cookies.get("currency"), default="eur")
     cart_count = sum(i.get("quantity", 1) for i in request.session.get("guest_cart", []))
     return {"request": request, "user": None, "cart_count": cart_count, "lang": lang, "currency": currency}
 
@@ -61,6 +63,11 @@ async def login_submit(
 ):
     ctx = _base_ctx(request)
     lang = ctx["lang"]
+    ip = client_ip(request)
+    if not auth_limiter.allowed(f"auth-login:{ip}", limit=12, window_seconds=60):
+        ctx["error"] = "Too many attempts. Please retry in a minute."
+        return templates.TemplateResponse("login.html", ctx, status_code=429)
+
     user = db.query(User).filter(User.email == email.lower().strip()).first()
     if not user or not verify_password(password, user.password_hash):
         ctx["error"] = _t("err_wrong_credentials", lang)

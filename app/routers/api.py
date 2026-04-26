@@ -9,6 +9,7 @@ from app.models import User, Product, CartItem, Order, OrderItem, SiteSetting
 from app.auth import decode_session_token
 from app.config import settings
 from app.payments import create_checkout, handle_webhook, sync_order_status
+from app.security import InMemoryRateLimiter, client_ip, is_safe_category_slug
 
 import uuid
 import datetime
@@ -17,6 +18,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+quick_order_limiter = InMemoryRateLimiter()
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -249,6 +251,11 @@ async def quick_order(
     Create an order for a single product without going through the cart.
     Accessible to both authenticated users and guests.
     """
+    ip = client_ip(request)
+    limiter_key = f"quick-order:{ip}"
+    if not quick_order_limiter.allowed(limiter_key, limit=20, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many quick-order requests. Please retry later.")
+
     product = db.query(Product).filter(Product.id == product_id, Product.is_active == True).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -355,9 +362,14 @@ async def api_products(
     from app.models import Category
     query = db.query(Product).filter(Product.is_active == True)
     if category:
-        cat = db.query(Category).filter(Category.slug == category).first()
-        if cat:
-            query = query.filter(Product.category_id == cat.id)
+        if is_safe_category_slug(category):
+            cat = db.query(Category).filter(Category.slug == category).first()
+            if cat:
+                query = query.filter(Product.category_id == cat.id)
+            else:
+                query = query.filter(Product.id == -1)
+        else:
+            query = query.filter(Product.id == -1)
     if brand:
         query = query.filter(Product.brand.ilike(f"%{brand}%"))
     products = query.order_by(Product.created_at.desc()).all()

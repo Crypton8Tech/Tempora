@@ -3,13 +3,19 @@
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
 from app.database import init_db
+from app.security import (
+    is_same_origin_request,
+    normalize_currency,
+    normalize_lang,
+    safe_redirect_target,
+)
 from app.translations import t as _t, format_price as _format_price, loc as _loc, SUPPORTED_LANGS, SUPPORTED_CURRENCIES
 from app.routers import pages, auth, api, admin
 
@@ -134,26 +140,63 @@ async def auto_detect_locale(request: Request, call_next):
     return response
 
 
+@app.middleware("http")
+async def csrf_guard(request: Request, call_next):
+    """Block cross-site unsafe requests, excluding payment webhooks."""
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        path = request.url.path
+        is_webhook = path.startswith("/api/") and (
+            path.endswith("/webhook") or path.startswith("/api/custom-webhook/")
+        )
+        if not is_webhook and not is_same_origin_request(request):
+            return Response(status_code=403, content="Forbidden")
+    return await call_next(request)
+
+
 # ── Language / Currency cookie endpoints ──────────────────────────────────────
 
-@app.get("/set-lang/{lang}")
-async def set_language(lang: str, request: Request):
-    if lang not in SUPPORTED_LANGS:
-        lang = "en"
-    referer = request.headers.get("referer", "/")
-    response = Response(status_code=302, headers={"Location": referer})
+@app.post("/set-lang")
+async def set_language(request: Request, lang: str = Form("en"), next_url: str = Form("/")):
+    lang = normalize_lang(lang, default="en")
+    target = safe_redirect_target(request, fallback="/", value=next_url)
+    response = Response(status_code=302, headers={"Location": target})
     response.set_cookie("lang", lang, max_age=365 * 86400, samesite="lax")
     return response
 
 
-@app.get("/set-currency/{cur}")
-async def set_currency(cur: str, request: Request):
-    if cur not in SUPPORTED_CURRENCIES:
-        cur = "eur"
-    referer = request.headers.get("referer", "/")
-    response = Response(status_code=302, headers={"Location": referer})
+@app.post("/set-currency")
+async def set_currency(request: Request, cur: str = Form("eur"), next_url: str = Form("/")):
+    cur = normalize_currency(cur, default="eur")
+    target = safe_redirect_target(request, fallback="/", value=next_url)
+    response = Response(status_code=302, headers={"Location": target})
     response.set_cookie("currency", cur, max_age=365 * 86400, samesite="lax")
     return response
+
+
+@app.get("/set-lang/{lang}")
+async def legacy_set_language(lang: str, request: Request):
+    # Keep legacy GET route for compatibility, but do not mutate state via GET.
+    target = safe_redirect_target(request, fallback="/")
+    return Response(status_code=302, headers={"Location": target})
+
+
+@app.get("/set-currency/{cur}")
+async def legacy_set_currency(cur: str, request: Request):
+    # Keep legacy GET route for compatibility, but do not mutate state via GET.
+    target = safe_redirect_target(request, fallback="/")
+    return Response(status_code=302, headers={"Location": target})
+
+
+@app.get("/set-lang")
+async def legacy_set_language_get(request: Request):
+    target = safe_redirect_target(request, fallback="/")
+    return Response(status_code=302, headers={"Location": target})
+
+
+@app.get("/set-currency")
+async def legacy_set_currency_get(request: Request):
+    target = safe_redirect_target(request, fallback="/")
+    return Response(status_code=302, headers={"Location": target})
 
 
 # ── Routers ───────────────────────────────────────────────────────────────────

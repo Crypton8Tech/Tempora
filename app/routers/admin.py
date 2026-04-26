@@ -8,11 +8,13 @@ import logging
 import re
 import urllib.request
 import urllib.parse
+import io
 
 from fastapi import APIRouter, Request, Depends, Form, UploadFile, File
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+from PIL import Image, UnidentifiedImageError
 
 from app.config import settings
 from app.database import get_db
@@ -31,9 +33,11 @@ from app.payments import (
     save_custom_providers,
 )
 from app.translations import t as _t, format_price as _fp, loc as _loc
+from app.security import InMemoryRateLimiter, client_ip
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+admin_login_limiter = InMemoryRateLimiter()
 
 templates = Jinja2Templates(
     directory=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
@@ -51,6 +55,9 @@ LANG_MAP = {
     "it": "it-IT",
     "es": "es-ES",
 }
+
+ALLOWED_IMAGE_FORMATS = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "GIF": ".gif"}
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 # ── Free translation via MyMemory ─────────────────────────────────────────────
@@ -114,6 +121,39 @@ def _admin_ctx(request: Request) -> dict:
     return {"request": request, "is_admin": True}
 
 
+async def _save_uploaded_image(file: UploadFile) -> str | None:
+    """Validate and persist an uploaded product image, returning public URL."""
+    if not file or not file.filename:
+        return None
+
+    raw = await file.read()
+    if not raw:
+        return None
+    if len(raw) > MAX_IMAGE_BYTES:
+        logger.warning("Rejected upload %s: image too large", file.filename)
+        return None
+
+    try:
+        image = Image.open(io.BytesIO(raw))
+        image.verify()
+    except (UnidentifiedImageError, OSError):
+        logger.warning("Rejected upload %s: not a valid image", file.filename)
+        return None
+
+    fmt = (image.format or "").upper()
+    ext = ALLOWED_IMAGE_FORMATS.get(fmt)
+    if not ext:
+        logger.warning("Rejected upload %s: unsupported format %s", file.filename, fmt)
+        return None
+
+    filename = f"{uuid.uuid4().hex}{ext}"
+    filepath = os.path.join(settings.UPLOAD_DIR, filename)
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    with open(filepath, "wb") as f:
+        f.write(raw)
+    return f"/static/uploads/{filename}"
+
+
 # ── Login ─────────────────────────────────────────────────────────────────────
 
 @router.get("/login")
@@ -127,6 +167,10 @@ async def admin_login_submit(
     username: str = Form(...),
     password: str = Form(...),
 ):
+    ip = client_ip(request)
+    if not admin_login_limiter.allowed(f"admin-login:{ip}", limit=8, window_seconds=60):
+        return templates.TemplateResponse("admin/login.html", {"request": request, "error": "Слишком много попыток. Повторите позже."}, status_code=429)
+
     if username == settings.ADMIN_USERNAME and password == settings.ADMIN_PASSWORD:
         request.session["is_admin"] = True
         return RedirectResponse("/admin", status_code=302)
@@ -219,16 +263,12 @@ async def admin_add_product_submit(
     sort_order = 0
     for file in files:
         if hasattr(file, "filename") and file.filename:
-            ext = os.path.splitext(file.filename)[1]
-            filename = f"{uuid.uuid4().hex}{ext}"
-            filepath = os.path.join(settings.UPLOAD_DIR, filename)
-            os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-            content = await file.read()
-            with open(filepath, "wb") as f:
-                f.write(content)
+            image_url = await _save_uploaded_image(file)
+            if not image_url:
+                continue
             db.add(ProductImage(
                 product_id=product.id,
-                url=f"/static/uploads/{filename}",
+                url=image_url,
                 sort_order=sort_order,
             ))
             sort_order += 1
@@ -299,16 +339,12 @@ async def admin_edit_product_submit(
     max_sort = max((img.sort_order for img in product.images), default=-1) + 1
     for file in files:
         if hasattr(file, "filename") and file.filename:
-            ext = os.path.splitext(file.filename)[1]
-            filename = f"{uuid.uuid4().hex}{ext}"
-            filepath = os.path.join(settings.UPLOAD_DIR, filename)
-            os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-            content = await file.read()
-            with open(filepath, "wb") as f:
-                f.write(content)
+            image_url = await _save_uploaded_image(file)
+            if not image_url:
+                continue
             db.add(ProductImage(
                 product_id=product.id,
-                url=f"/static/uploads/{filename}",
+                url=image_url,
                 sort_order=max_sort,
             ))
             max_sort += 1

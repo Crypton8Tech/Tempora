@@ -50,11 +50,40 @@ server {
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
+                proxy_set_header Origin $http_origin;
+                proxy_set_header Referer $http_referer;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
+```
+
+## 7. Reverse proxy checklist (обязательно)
+
+Чтобы CSRF-защита и rate limiting работали корректно за reverse proxy:
+
+1. Всегда прокидывайте оригинальный `Host` (`proxy_set_header Host $host;`).
+2. Не затирайте `Origin` и `Referer`; при наличии прокидывайте как есть.
+3. Прокидывайте клиентский IP через `X-Forwarded-For` c `proxy_add_x_forwarded_for`.
+4. Отключите доверие к пользовательскому `X-Forwarded-For` на внешнем уровне (доверять только вашему proxy/load balancer).
+5. Для нескольких прокси убедитесь, что левый IP в `X-Forwarded-For` остаётся реальным клиентом.
+6. На edge-уровне включите HTTPS-redirect и HSTS.
+
+Проверка после деплоя:
+
+```bash
+# Должен вернуть 403 (cross-site POST blocked by CSRF guard)
+curl -i -X POST https://your_domain.com/set-currency \
+    -H "Origin: https://evil.example" \
+    -d "cur=usd&next_url=/"
+
+# Серия запросов с одного IP должна упереться в 429
+for i in {1..25}; do
+    curl -s -o /dev/null -w "%{http_code}\n" -X POST https://your_domain.com/api/quick-order \
+        -H "X-Forwarded-For: 198.51.100.77" \
+        -d "product_id=1&guest_name=A&guest_email=a%40a.com&phone=1&address=A&quantity=1";
+done
 ```
 
 ---
