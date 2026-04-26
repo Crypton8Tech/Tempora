@@ -11,6 +11,9 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import settings
 from app.database import init_db
 from app.security import (
+    extract_csrf_token,
+    generate_csrf_token,
+    is_valid_csrf_token,
     is_same_origin_request,
     normalize_currency,
     normalize_lang,
@@ -102,7 +105,12 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(title="TemporaShop", lifespan=lifespan)
 
-app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SECRET_KEY,
+    same_site="strict",
+    https_only=settings.SESSION_COOKIE_SECURE,
+)
 
 static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -142,15 +150,57 @@ async def auto_detect_locale(request: Request, call_next):
 
 @app.middleware("http")
 async def csrf_guard(request: Request, call_next):
-    """Block cross-site unsafe requests, excluding payment webhooks."""
+    """Block cross-site unsafe requests and require CSRF token, excluding payment webhooks."""
+    cookie_token = request.cookies.get("csrf_token", "").strip()
+    csrf_token = cookie_token or generate_csrf_token()
+    request.state.csrf_token = csrf_token
+
     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         path = request.url.path
         is_webhook = path.startswith("/api/") and (
             path.endswith("/webhook") or path.startswith("/api/custom-webhook/")
         )
-        if not is_webhook and not is_same_origin_request(request):
-            return Response(status_code=403, content="Forbidden")
-    return await call_next(request)
+        if not is_webhook:
+            if not is_same_origin_request(request):
+                return Response(status_code=403, content="Forbidden")
+
+            expected = cookie_token
+            provided = await extract_csrf_token(request)
+
+            if not is_valid_csrf_token(expected, provided):
+                return Response(status_code=403, content="Forbidden")
+
+    response = await call_next(request)
+    if request.cookies.get("csrf_token") != csrf_token:
+        response.set_cookie(
+            "csrf_token",
+            csrf_token,
+            max_age=365 * 86400,
+            samesite="strict",
+            secure=settings.SESSION_COOKIE_SECURE,
+            httponly=False,
+        )
+    return response
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none'; "
+        "form-action 'self'; "
+        "img-src 'self' data: https:; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+        "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+        "script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'"
+    )
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 
 # ── Language / Currency cookie endpoints ──────────────────────────────────────

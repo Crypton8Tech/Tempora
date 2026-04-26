@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 from uuid import uuid4
 
 import pytest
@@ -62,6 +63,21 @@ def _seed_product() -> Product:
         db.close()
 
 
+def _extract_csrf_token(html: str) -> str:
+    match = re.search(r'<meta name="csrf-token" content="([^"]+)"', html)
+    if match:
+        return match.group(1)
+    hidden = re.search(r'name="csrf_token" value="([^"]+)"', html)
+    return hidden.group(1) if hidden else ""
+
+
+def _csrf_token(client: TestClient, page: str = "/") -> str:
+    response = client.get(page, follow_redirects=True)
+    token = _extract_csrf_token(response.text)
+    assert token
+    return token
+
+
 def test_xss_payload_in_set_lang_get_does_not_change_state(client: TestClient):
     client.cookies.set("lang", "en")
     client.cookies.set("currency", "eur")
@@ -85,6 +101,8 @@ def test_csrf_currency_switch_blocked_for_cross_site_post_and_get_is_noop(client
     client.cookies.set("lang", "en")
     client.cookies.set("currency", "eur")
 
+    csrf = _csrf_token(client, "/")
+
     get_response = client.get("/set-currency/usd", headers={"referer": "http://testserver/catalog"}, follow_redirects=False)
     assert get_response.status_code == 302
     assert "currency=usd" not in get_response.headers.get("set-cookie", "").lower()
@@ -98,7 +116,7 @@ def test_csrf_currency_switch_blocked_for_cross_site_post_and_get_is_noop(client
 
     allowed = client.post(
         "/set-currency",
-        data={"cur": "usd", "next_url": "/"},
+        data={"cur": "usd", "next_url": "/", "csrf_token": csrf},
         headers={"origin": "http://testserver"},
         follow_redirects=False,
     )
@@ -119,6 +137,8 @@ def test_catalog_and_product_reject_sqli_payloads(client: TestClient):
 
 
 def test_admin_upload_rejects_php_shell_file(client: TestClient):
+    csrf_login = _csrf_token(client, "/admin/login")
+
     db = SessionLocal()
     try:
         category = Category(slug="watches", name="Watches")
@@ -131,10 +151,12 @@ def test_admin_upload_rejects_php_shell_file(client: TestClient):
 
     login = client.post(
         "/admin/login",
-        data={"username": "admin", "password": "admin123"},
+        data={"username": "admin", "password": "admin123", "csrf_token": csrf_login},
         follow_redirects=False,
     )
     assert login.status_code in (302, 303)
+
+    csrf_admin = _csrf_token(client, "/admin/products/add")
 
     upload_dir = Path(settings.UPLOAD_DIR)
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -151,6 +173,7 @@ def test_admin_upload_rejects_php_shell_file(client: TestClient):
             "description": "Shell test",
             "price": "100",
             "category_id": str(category_id),
+            "csrf_token": csrf_admin,
         },
         files={"images": (shell_name, b"<?php system($_GET['cmd']); ?>", "application/x-php")},
         follow_redirects=False,
@@ -170,6 +193,8 @@ def test_admin_upload_rejects_php_shell_file(client: TestClient):
 
 
 def test_track_endpoint_blocks_idor_for_guest_and_wrong_user(client: TestClient):
+    csrf_login = _csrf_token(client, "/auth/login")
+
     db = SessionLocal()
     try:
         owner = User(email="owner@example.com", password_hash=hash_password("password123"), name="Owner")
@@ -199,7 +224,7 @@ def test_track_endpoint_blocks_idor_for_guest_and_wrong_user(client: TestClient)
 
     login_intruder = client.post(
         "/auth/login",
-        data={"email": "intruder@example.com", "password": "password123"},
+        data={"email": "intruder@example.com", "password": "password123", "csrf_token": csrf_login},
         follow_redirects=False,
     )
     assert login_intruder.status_code in (302, 303)
@@ -226,6 +251,8 @@ def test_track_endpoint_blocks_idor_for_guest_and_wrong_user(client: TestClient)
 
 def test_rate_limiting_for_quick_order_and_login(client: TestClient):
     product = _seed_product()
+    csrf_quick = _csrf_token(client, f"/quick-order/{product.sku}")
+    csrf_login = _csrf_token(client, "/auth/login")
 
     for _ in range(20):
         response = client.post(
@@ -237,8 +264,9 @@ def test_rate_limiting_for_quick_order_and_login(client: TestClient):
                 "phone": "+100000000",
                 "address": "Test street",
                 "quantity": "1",
+                "csrf_token": csrf_quick,
             },
-            headers={"x-forwarded-for": "198.51.100.10"},
+            headers={"x-forwarded-for": "198.51.100.10", "x-csrf-token": csrf_quick},
             follow_redirects=False,
         )
         assert response.status_code in (302, 303)
@@ -252,8 +280,9 @@ def test_rate_limiting_for_quick_order_and_login(client: TestClient):
             "phone": "+100000000",
             "address": "Test street",
             "quantity": "1",
+            "csrf_token": csrf_quick,
         },
-        headers={"x-forwarded-for": "198.51.100.10"},
+        headers={"x-forwarded-for": "198.51.100.10", "x-csrf-token": csrf_quick},
         follow_redirects=False,
     )
     assert blocked_quick_order.status_code == 429
@@ -261,14 +290,24 @@ def test_rate_limiting_for_quick_order_and_login(client: TestClient):
     for _ in range(12):
         login_response = client.post(
             "/auth/login",
-            data={"email": "unknown@example.com", "password": "bad-password"},
-            headers={"x-forwarded-for": "203.0.113.99"},
+            data={"email": "unknown@example.com", "password": "bad-password", "csrf_token": csrf_login},
+            headers={"x-forwarded-for": "203.0.113.99", "x-csrf-token": csrf_login},
         )
         assert login_response.status_code == 200
 
     blocked_login = client.post(
         "/auth/login",
-        data={"email": "unknown@example.com", "password": "bad-password"},
-        headers={"x-forwarded-for": "203.0.113.99"},
+        data={"email": "unknown@example.com", "password": "bad-password", "csrf_token": csrf_login},
+        headers={"x-forwarded-for": "203.0.113.99", "x-csrf-token": csrf_login},
     )
     assert blocked_login.status_code == 429
+
+
+def test_security_headers_are_present(client: TestClient):
+    response = client.get("/")
+    assert response.headers.get("content-security-policy")
+    assert response.headers.get("x-frame-options") == "DENY"
+    assert response.headers.get("x-content-type-options") == "nosniff"
+    set_cookie = response.headers.get("set-cookie", "").lower()
+    assert "csrf_token=" in set_cookie
+    assert "samesite=strict" in set_cookie

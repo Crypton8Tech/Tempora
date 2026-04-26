@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import re
+import secrets
 import threading
 import time
 from collections import defaultdict, deque
+from hmac import compare_digest
+from urllib.parse import parse_qs
 from urllib.parse import urlparse
 
 from fastapi import Request
@@ -111,3 +114,38 @@ def client_ip(request: Request) -> str:
     if request.client and request.client.host:
         return request.client.host
     return "unknown"
+
+
+def generate_csrf_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def is_valid_csrf_token(expected: str | None, provided: str | None) -> bool:
+    if not expected or not provided:
+        return False
+    return compare_digest(expected, provided)
+
+
+async def extract_csrf_token(request: Request) -> str:
+    """Extract CSRF token from header or request body without breaking downstream parsing."""
+    header = request.headers.get("x-csrf-token", "").strip()
+    if header:
+        return header
+
+    content_type = request.headers.get("content-type", "").lower()
+    if "application/x-www-form-urlencoded" not in content_type and "multipart/form-data" not in content_type:
+        return ""
+
+    body = await request.body()
+    if not body:
+        return ""
+
+    if "application/x-www-form-urlencoded" in content_type:
+        parsed = parse_qs(body.decode("utf-8", errors="ignore"), keep_blank_values=True)
+        return (parsed.get("csrf_token", [""])[0] or "").strip()
+
+    # Simple multipart extraction for csrf_token field.
+    match = re.search(rb'name="csrf_token"\r\n\r\n([^\r\n]+)', body)
+    if not match:
+        return ""
+    return match.group(1).decode("utf-8", errors="ignore").strip()

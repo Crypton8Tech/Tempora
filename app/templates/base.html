@@ -11,6 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <meta name="csrf-token" content="{{ request.state.csrf_token if request.state.csrf_token else '' }}">
     {% block head %}{% endblock %}
 </head>
 <body>
@@ -154,6 +155,37 @@
     </footer>
 
     <script src="/static/js/main.js"></script>
+    <script>
+        (function () {
+            const token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+            window.getCsrfToken = function () { return token; };
+
+            document.querySelectorAll('form[method="post"], form[method="POST"]').forEach((form) => {
+                if (form.querySelector('input[name="csrf_token"]')) {
+                    return;
+                }
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'csrf_token';
+                input.value = token;
+                form.appendChild(input);
+            });
+
+            const nativeFetch = window.fetch;
+            window.fetch = function (input, init) {
+                const req = init || {};
+                const method = (req.method || 'GET').toUpperCase();
+                if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+                    const headers = new Headers(req.headers || {});
+                    if (!headers.has('X-CSRF-Token') && token) {
+                        headers.set('X-CSRF-Token', token);
+                    }
+                    req.headers = headers;
+                }
+                return nativeFetch(input, req);
+            };
+        })();
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

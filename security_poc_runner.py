@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./data/poc_security.db")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
@@ -20,6 +21,20 @@ from app.models import Category, Order, Product, User
 from app.routers import admin as admin_router
 from app.routers import api as api_router
 from app.routers import auth as auth_router
+
+
+def _extract_csrf_token(html: str) -> str:
+    match = re.search(r'<meta name="csrf-token" content="([^"]+)"', html)
+    if match:
+        return match.group(1)
+    hidden = re.search(r'name="csrf_token" value="([^"]+)"', html)
+    return hidden.group(1) if hidden else ""
+
+
+def _csrf_token(client: TestClient, page: str = "/") -> str:
+    response = client.get(page, follow_redirects=True)
+    token = _extract_csrf_token(response.text)
+    return token
 
 
 def reset_state() -> None:
@@ -84,11 +99,18 @@ def run_checks() -> list[tuple[str, bool]]:
     ))
 
     # 2) CSRF via set-currency
+    csrf_home = _csrf_token(client, "/")
     r_get = client.get("/set-currency/usd")
     r_post = client.post("/set-currency", data={"cur": "usd", "next_url": "/"}, headers={"origin": "https://evil.example"})
+    r_ok = client.post(
+        "/set-currency",
+        data={"cur": "usd", "next_url": "/", "csrf_token": csrf_home},
+        headers={"origin": "http://testserver", "x-csrf-token": csrf_home},
+        follow_redirects=False,
+    )
     results.append((
         "2) CSRF set-currency",
-        "currency=" not in r_get.headers.get("set-cookie", "").lower() and r_post.status_code == 403,
+        "currency=" not in r_get.headers.get("set-cookie", "").lower() and r_post.status_code == 403 and r_ok.status_code == 302,
     ))
 
     # 3) SQL injection payloads
@@ -100,7 +122,14 @@ def run_checks() -> list[tuple[str, bool]]:
     ))
 
     # 4) Upload shell file
-    login = client.post("/admin/login", data={"username": "admin", "password": "admin123"}, follow_redirects=False)
+    csrf_admin_login = _csrf_token(client, "/admin/login")
+    login = client.post(
+        "/admin/login",
+        data={"username": "admin", "password": "admin123", "csrf_token": csrf_admin_login},
+        headers={"x-csrf-token": csrf_admin_login},
+        follow_redirects=False,
+    )
+    csrf_admin_add = _csrf_token(client, "/admin/products/add")
     upload_dir = Path(settings.UPLOAD_DIR)
     upload_dir.mkdir(parents=True, exist_ok=True)
     php_before = {p.name for p in upload_dir.glob("*.php")}
@@ -114,7 +143,9 @@ def run_checks() -> list[tuple[str, bool]]:
             "description": "test",
             "price": "10",
             "category_id": "1",
+            "csrf_token": csrf_admin_add,
         },
+        headers={"x-csrf-token": csrf_admin_add},
         files={"images": ("hack.php", b"<?php system($_GET['cmd']); ?>", "application/x-php")},
         follow_redirects=False,
     )
@@ -125,7 +156,13 @@ def run_checks() -> list[tuple[str, bool]]:
     ))
 
     # 5) IDOR in tracking
-    auth_in = client.post("/auth/login", data={"email": "intruder@example.com", "password": "password123"}, follow_redirects=False)
+    csrf_auth = _csrf_token(client, "/auth/login")
+    auth_in = client.post(
+        "/auth/login",
+        data={"email": "intruder@example.com", "password": "password123", "csrf_token": csrf_auth},
+        headers={"x-csrf-token": csrf_auth},
+        follow_redirects=False,
+    )
     r_forbidden = client.get("/track/result", params={"order_number": "TS-IDOR-OWN-1"})
     client.get("/auth/logout", follow_redirects=False)
     r_guest_bad = client.get("/track/result", params={"order_number": "TS-IDOR-GUEST-1"})
@@ -139,6 +176,8 @@ def run_checks() -> list[tuple[str, bool]]:
     ))
 
     # 6) Rate limiting for quick-order and login
+    csrf_quick = _csrf_token(client, "/quick-order/SAFE-SKU-1")
+    csrf_login = _csrf_token(client, "/auth/login")
     quick_ok = True
     for _ in range(20):
         rr = client.post(
@@ -150,8 +189,9 @@ def run_checks() -> list[tuple[str, bool]]:
                 "phone": "1",
                 "address": "A",
                 "quantity": "1",
+                "csrf_token": csrf_quick,
             },
-            headers={"x-forwarded-for": "198.51.100.10"},
+            headers={"x-forwarded-for": "198.51.100.10", "x-csrf-token": csrf_quick},
             follow_redirects=False,
         )
         if rr.status_code not in (302, 303):
@@ -166,22 +206,23 @@ def run_checks() -> list[tuple[str, bool]]:
             "phone": "1",
             "address": "A",
             "quantity": "1",
+            "csrf_token": csrf_quick,
         },
-        headers={"x-forwarded-for": "198.51.100.10"},
+        headers={"x-forwarded-for": "198.51.100.10", "x-csrf-token": csrf_quick},
         follow_redirects=False,
     )
 
     for _ in range(12):
         client.post(
             "/auth/login",
-            data={"email": "none@example.com", "password": "bad"},
-            headers={"x-forwarded-for": "203.0.113.99"},
+            data={"email": "none@example.com", "password": "bad", "csrf_token": csrf_login},
+            headers={"x-forwarded-for": "203.0.113.99", "x-csrf-token": csrf_login},
         )
 
     r_login_429 = client.post(
         "/auth/login",
-        data={"email": "none@example.com", "password": "bad"},
-        headers={"x-forwarded-for": "203.0.113.99"},
+        data={"email": "none@example.com", "password": "bad", "csrf_token": csrf_login},
+        headers={"x-forwarded-for": "203.0.113.99", "x-csrf-token": csrf_login},
     )
 
     results.append((

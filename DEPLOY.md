@@ -47,15 +47,35 @@ server {
         alias /path/to/your/project/app/static/;
     }
 
+    # Never execute scripts from user-upload directory.
+    location ^~ /static/uploads/ {
+        alias /path/to/your/project/app/static/uploads/;
+        autoindex off;
+        types { }
+        default_type application/octet-stream;
+        add_header X-Content-Type-Options nosniff always;
+        try_files $uri =404;
+    }
+
+    location ~* ^/static/uploads/.*\.(php|phtml|phar|cgi|pl|py|sh)$ {
+        deny all;
+        return 403;
+    }
+
     location / {
         proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
-                proxy_set_header Origin $http_origin;
-                proxy_set_header Referer $http_referer;
+        proxy_set_header Origin $http_origin;
+        proxy_set_header Referer $http_referer;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
+
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Content-Security-Policy "default-src 'self'" always;
 }
 ```
 
@@ -69,6 +89,7 @@ server {
 4. Отключите доверие к пользовательскому `X-Forwarded-For` на внешнем уровне (доверять только вашему proxy/load balancer).
 5. Для нескольких прокси убедитесь, что левый IP в `X-Forwarded-For` остаётся реальным клиентом.
 6. На edge-уровне включите HTTPS-redirect и HSTS.
+7. В production включите `SESSION_COOKIE_SECURE=true` в `.env`.
 
 Проверка после деплоя:
 

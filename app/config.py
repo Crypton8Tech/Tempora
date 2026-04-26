@@ -6,6 +6,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class Settings:
     BOT_USERNAME: str = os.getenv("BOT_USERNAME", "TemporaShopBot")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "change-me")
@@ -19,6 +26,7 @@ class Settings:
     STRIPE_WEBHOOK_SECRET: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
     CSSCAPITAL_API_KEY: str = os.getenv("CSSCAPITAL_API_KEY", "api_gf3Bi3tt9gZHBCe5")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    SESSION_COOKIE_SECURE: bool = _env_bool("SESSION_COOKIE_SECURE", False)
 
 
 settings = Settings()

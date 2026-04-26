@@ -6,6 +6,7 @@
     <title>Вход — Админ-панель</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <meta name="csrf-token" content="{{ request.state.csrf_token if request.state.csrf_token else '' }}">
 </head>
 <body class="admin-body">
     <div class="admin-login-page">
@@ -15,6 +16,7 @@
             <div class="admin-error">{{ error }}</div>
             {% endif %}
             <form method="post" action="/admin/login">
+                <input type="hidden" name="csrf_token" value="{{ request.state.csrf_token if request.state.csrf_token else '' }}">
                 <div class="form-group">
                     <label>Логин</label>
                     <input type="text" name="username" class="admin-input" required autofocus>
