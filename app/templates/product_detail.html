@@ -39,7 +39,7 @@
                 </div>
 
                 <div class="product-description">
-                    {{ loc(product, 'description', lang) | replace("\n", "<br>") | safe }}
+                    <div style="white-space: pre-line;">{{ loc(product, 'description', lang) }}</div>
                 </div>
 
                 {% if product.characteristics %}
@@ -119,9 +119,9 @@
 
 {% block scripts %}
 <script>
-const LANG_ADDED   = {{ ("'" + t('added_to_cart', lang) + "'")|safe }};
-const LANG_ERROR   = {{ ("'" + t('error_adding',  lang) + "'")|safe }};
-const LANG_NETWORK = {{ ("'" + t('network_error', lang) + "'")|safe }};
+const LANG_ADDED   = {{ t('added_to_cart', lang)|tojson }};
+const LANG_ERROR   = {{ t('error_adding',  lang)|tojson }};
+const LANG_NETWORK = {{ t('network_error', lang)|tojson }};
 
 function changeMainImage(thumb, url) {
     document.getElementById('mainImage').src = url;

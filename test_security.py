@@ -311,3 +311,28 @@ def test_security_headers_are_present(client: TestClient):
     set_cookie = response.headers.get("set-cookie", "").lower()
     assert "csrf_token=" in set_cookie
     assert "samesite=strict" in set_cookie
+
+
+def test_product_description_is_escaped(client: TestClient):
+    db = SessionLocal()
+    try:
+        category = Category(slug="watches", name="Watches")
+        product = Product(
+            sku="XSS-SKU-1",
+            brand="Tempora",
+            model="XSS",
+            name="XSS Product",
+            description="<script>alert(1)</script>",
+            price=50.0,
+            category=category,
+            is_active=True,
+        )
+        db.add_all([category, product])
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get("/product/XSS-SKU-1")
+    assert response.status_code == 200
+    assert "<script>alert(1)</script>" not in response.text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in response.text
