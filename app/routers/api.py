@@ -1,6 +1,6 @@
 """API-маршруты корзины, заказов, платежей и AJAX-эндпоинтов."""
 
-from fastapi import APIRouter, Request, Depends, Form, HTTPException
+from fastapi import APIRouter, Request, Depends, Form, HTTPException, Query
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ import uuid
 import datetime
 import logging
 import re
+import ipaddress
 from types import SimpleNamespace
 
 logger = logging.getLogger(__name__)
@@ -157,10 +158,12 @@ def _validate_checkout_payload(
         raise HTTPException(status_code=422, detail="Address line 1 is required")
     if not city_clean:
         raise HTTPException(status_code=422, detail="City is required")
-    if not _POSTAL_RE.fullmatch(postal):
+    if postal and not _POSTAL_RE.fullmatch(postal):
         raise HTTPException(status_code=422, detail="Invalid ZIP / postal code")
     if country_code in {"US", "CA"} and not state_clean:
         raise HTTPException(status_code=422, detail="State / region is required for this country")
+    if country_code in {"US", "CA"} and not postal:
+        raise HTTPException(status_code=422, detail="ZIP / postal code is required for this country")
 
     return {
         "full_name": name,
@@ -188,12 +191,30 @@ def _compose_shipping_address(data: dict[str, str]) -> str:
     parts.append(f"City: {data['city']}")
     if data["state_region"]:
         parts.append(f"State/Region: {data['state_region']}")
-    parts.append(f"ZIP/Postal: {data['postal_code']}")
+    if data["postal_code"]:
+        parts.append(f"ZIP/Postal: {data['postal_code']}")
     if data["company_name"]:
         parts.append(f"Company: {data['company_name']}")
     if data["door_code"]:
         parts.append(f"Door/Floor: {data['door_code']}")
     return "\n".join(parts)
+
+
+def _infer_country_from_accept_language(request: Request) -> str | None:
+    header = (request.headers.get("accept-language") or "").split(",")[0].strip().upper()
+    if "-" in header:
+        code = header.split("-")[-1]
+        if code in _COUNTRY_NAMES:
+            return code
+    return None
+
+
+def _is_public_ip(value: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(value)
+        return not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast)
+    except ValueError:
+        return False
 
 
 # ── Guest cart helpers ────────────────────────────────────────────────────────
@@ -603,6 +624,88 @@ async def payment_retry(order_number: str, db: Session = Depends(get_db)):
         return RedirectResponse(redirect_url, status_code=303)
 
     return RedirectResponse(f"/payment/{order.order_number}?payment_error=1", status_code=303)
+
+
+@router.get("/geo-country")
+async def geo_country(request: Request):
+    """Best-effort country auto-detection by client IP with safe fallbacks."""
+    ip = client_ip(request)
+    if _is_public_ip(ip):
+        try:
+            import httpx
+
+            resp = httpx.get(f"https://ipapi.co/{ip}/json/", timeout=3)
+            if resp.status_code == 200:
+                data = resp.json()
+                code = str(data.get("country_code", "")).upper()
+                if code in _COUNTRY_NAMES:
+                    return {"country": code, "source": "ip"}
+        except Exception:
+            pass
+
+    fallback = _infer_country_from_accept_language(request)
+    if fallback:
+        return {"country": fallback, "source": "accept-language"}
+    return {"country": "", "source": "none"}
+
+
+@router.get("/address/autocomplete")
+async def address_autocomplete(
+    request: Request,
+    q: str = Query("", min_length=1, max_length=200),
+    country: str = Query("", min_length=0, max_length=2),
+):
+    """Address autocomplete via OSM Nominatim with city/state/postal extraction."""
+    query = (q or "").strip()
+    if len(query) < 3:
+        return {"items": []}
+
+    params = {
+        "q": query,
+        "format": "jsonv2",
+        "addressdetails": 1,
+        "limit": 6,
+    }
+    country_code = (country or "").strip().lower()
+    if len(country_code) == 2 and country_code.upper() in _COUNTRY_NAMES:
+        params["countrycodes"] = country_code
+
+    try:
+        import httpx
+
+        headers = {
+            "User-Agent": "TemporaShop/1.0 (checkout autocomplete)",
+            "Accept-Language": request.headers.get("accept-language", "en"),
+        }
+        resp = httpx.get("https://nominatim.openstreetmap.org/search", params=params, headers=headers, timeout=6)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return {"items": []}
+
+    items = []
+    for row in data:
+        addr = row.get("address", {}) or {}
+        road = addr.get("road") or addr.get("pedestrian") or addr.get("footway") or addr.get("street") or ""
+        house = addr.get("house_number") or ""
+        line1 = " ".join(p for p in [road, house] if p).strip() or (row.get("name") or "")
+        city = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("hamlet") or ""
+        state = addr.get("state") or addr.get("region") or ""
+        postal = addr.get("postcode") or ""
+        ccode = str(addr.get("country_code") or "").upper()
+
+        items.append({
+            "display_name": row.get("display_name", ""),
+            "address_line1": line1,
+            "city": city,
+            "state_region": state,
+            "postal_code": postal,
+            "country": ccode if ccode in _COUNTRY_NAMES else "",
+            "lat": row.get("lat", ""),
+            "lon": row.get("lon", ""),
+        })
+
+    return {"items": items}
 
 
 # ── JSON API for products (AJAX) ──────────────────────────────────────────────

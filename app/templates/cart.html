@@ -40,13 +40,18 @@
                     <span>{{ t('items_count', lang) }}: {{ items|length }}</span>
                     <span class="summary-total">{{ format_price(total, currency) }}</span>
                 </div>
-                <form action="/api/checkout" method="post" class="checkout-form" id="checkoutForm">
-                    <h4 class="checkout-section-title">1. {{ t('checkout_contact_info', lang) }}</h4>
+                <form action="/api/checkout" method="post" class="checkout-form" id="checkoutForm" novalidate>
+                    <h4 class="checkout-section-title">{{ t('checkout_contact_info', lang) }}</h4>
+
+                    <div class="form-group">
+                        <label>{{ t('checkout_full_name', lang) }} <span class="required-mark">*</span></label>
+                        <input type="text" name="full_name" class="form-input" placeholder="{{ t('checkout_full_name_placeholder', lang) }}" value="{{ user.name if user else '' }}" required minlength="3" maxlength="120">
+                    </div>
 
                     <div class="checkout-grid-2">
                         <div class="form-group">
-                            <label>{{ t('checkout_full_name', lang) }} <span class="required-mark">*</span></label>
-                            <input type="text" name="full_name" class="form-input" placeholder="{{ t('checkout_full_name_placeholder', lang) }}" value="{{ user.name if user else '' }}" required minlength="3" maxlength="120">
+                            <label>{{ t('checkout_phone_number', lang) }} <span class="required-mark">*</span></label>
+                            <input id="checkoutPhone" type="tel" name="phone" class="form-input" placeholder="{{ t('checkout_phone_placeholder', lang) }}" value="{{ user.phone if user and user.phone else '' }}" required pattern="^\+?[0-9()\-\s]{7,20}$">
                         </div>
                         <div class="form-group">
                             <label>{{ t('checkout_email', lang) }} <span class="required-mark">*</span></label>
@@ -54,12 +59,7 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label>{{ t('checkout_phone_number', lang) }} <span class="required-mark">*</span></label>
-                        <input id="checkoutPhone" type="tel" name="phone" class="form-input" placeholder="{{ t('checkout_phone_placeholder', lang) }}" value="{{ user.phone if user and user.phone else '' }}" required pattern="^\+?[0-9()\-\s]{7,20}$">
-                    </div>
-
-                    <h4 class="checkout-section-title">2. {{ t('checkout_shipping_address', lang) }}</h4>
+                    <h4 class="checkout-section-title">{{ t('checkout_shipping_address', lang) }}</h4>
 
                     <div class="form-group">
                         <label>{{ t('checkout_country', lang) }} <span class="required-mark">*</span></label>
@@ -87,52 +87,25 @@
                         </select>
                     </div>
 
-                    <div class="form-group">
+                    <div class="form-group address-autocomplete">
                         <label>{{ t('checkout_address_line1', lang) }} <span class="required-mark">*</span></label>
-                        <input type="text" name="address_line1" class="form-input" placeholder="{{ t('checkout_address_line1_placeholder', lang) }}" list="addressSuggestions" required maxlength="180">
-                        <datalist id="addressSuggestions"></datalist>
-                    </div>
-
-                    <div class="form-group">
-                        <label>{{ t('checkout_address_line2', lang) }}</label>
-                        <input type="text" name="address_line2" class="form-input" placeholder="{{ t('checkout_address_line2_placeholder', lang) }}" maxlength="180">
+                        <input id="checkoutAddress" type="text" name="address_line1" class="form-input" placeholder="{{ t('checkout_address_line1_placeholder', lang) }}" required maxlength="180" autocomplete="off">
+                        <div id="checkoutAddressResults" class="address-results" hidden></div>
                     </div>
 
                     <div class="checkout-grid-3">
                         <div class="form-group">
                             <label>{{ t('checkout_city', lang) }} <span class="required-mark">*</span></label>
-                            <input type="text" name="city" class="form-input" placeholder="{{ t('checkout_city_placeholder', lang) }}" required maxlength="120">
+                            <input id="checkoutCity" type="text" name="city" class="form-input" placeholder="{{ t('checkout_city_placeholder', lang) }}" required maxlength="120">
                         </div>
                         <div class="form-group">
                             <label>{{ t('checkout_state_region', lang) }}</label>
                             <input id="checkoutState" type="text" name="state_region" class="form-input" placeholder="{{ t('checkout_state_placeholder', lang) }}" maxlength="120">
                         </div>
                         <div class="form-group">
-                            <label>{{ t('checkout_zip_postal', lang) }} <span class="required-mark">*</span></label>
-                            <input type="text" name="postal_code" class="form-input" placeholder="{{ t('checkout_zip_placeholder', lang) }}" required pattern="[A-Za-z0-9\-\s]{3,12}" maxlength="24">
+                            <label>{{ t('checkout_zip_postal', lang) }}</label>
+                            <input id="checkoutPostal" type="text" name="postal_code" class="form-input" placeholder="{{ t('checkout_zip_placeholder', lang) }}" pattern="[A-Za-z0-9\-\s]{3,12}" maxlength="24">
                         </div>
-                    </div>
-
-                    <h4 class="checkout-section-title">3. {{ t('checkout_confirmation', lang) }}</h4>
-
-                    <div class="checkout-grid-2">
-                        <div class="form-group">
-                            <label>{{ t('checkout_company_name', lang) }}</label>
-                            <input type="text" name="company_name" class="form-input" placeholder="{{ t('checkout_optional', lang) }}" maxlength="160">
-                        </div>
-                        <div class="form-group">
-                            <label>{{ t('checkout_door_code_floor', lang) }}</label>
-                            <input type="text" name="door_code" class="form-input" placeholder="{{ t('checkout_optional', lang) }}" maxlength="120">
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>{{ t('checkout_delivery_notes', lang) }}</label>
-                        <textarea name="delivery_notes" class="form-input" rows="2" placeholder="{{ t('checkout_delivery_notes_placeholder', lang) }}"></textarea>
-                    </div>
-
-                    <div class="checkout-confirm">
-                        {{ t('checkout_confirm_text', lang) }}
                     </div>
 
                     {% if stripe_pk %}
@@ -214,21 +187,39 @@ function removeItem(itemId) {
 
     const countrySelect = document.getElementById('checkoutCountry');
     const phoneInput = document.getElementById('checkoutPhone');
+    const addressInput = document.getElementById('checkoutAddress');
+    const results = document.getElementById('checkoutAddressResults');
+    const cityInput = document.getElementById('checkoutCity');
     const stateInput = document.getElementById('checkoutState');
-    const address1 = form.querySelector('input[name="address_line1"]');
-    const datalist = document.getElementById('addressSuggestions');
+    const postalInput = document.getElementById('checkoutPostal');
 
     const countryDial = {
         US: '+1', CA: '+1', GB: '+44', DE: '+49', FR: '+33', IT: '+39', ES: '+34', CH: '+41',
         PL: '+48', NL: '+31', BE: '+32', AT: '+43', SE: '+46', NO: '+47', DK: '+45', CZ: '+420', UA: '+380', TR: '+90', AE: '+971'
     };
 
+    const stateRequiredText = {{ t('checkout_state_required', lang) | tojson }};
+    const stateDefaultText = {{ t('checkout_state_placeholder', lang) | tojson }};
+    let activeItems = [];
+    let debounceTimer = null;
+
+    function setFieldError(input, message) {
+        let msg = input.parentElement.querySelector('.form-error');
+        if (!msg) {
+            msg = document.createElement('div');
+            msg.className = 'form-error';
+            input.parentElement.appendChild(msg);
+        }
+        msg.textContent = message || '';
+        msg.hidden = !message;
+        input.classList.toggle('input-error', Boolean(message));
+    }
+
     function updateCountryDependentFields() {
         const c = (countrySelect.value || '').toUpperCase();
         const needState = c === 'US' || c === 'CA';
         stateInput.required = needState;
-        const stateRequiredText = {{ t('checkout_state_required', lang) | tojson }};
-        const stateDefaultText = {{ t('checkout_state_placeholder', lang) | tojson }};
+        postalInput.required = needState;
         stateInput.placeholder = needState ? stateRequiredText : stateDefaultText;
 
         if (countryDial[c] && !phoneInput.value.trim()) {
@@ -236,45 +227,112 @@ function removeItem(itemId) {
         }
     }
 
-    function autoDetectCountry() {
-        if (countrySelect.value) return;
-        const nav = (navigator.language || '').toUpperCase();
-        const code = nav.includes('-') ? nav.split('-')[1] : '';
-        if (code && countryDial[code]) {
-            countrySelect.value = code;
-            updateCountryDependentFields();
+    async function detectCountryByIp() {
+        try {
+            const r = await fetch('/api/geo-country');
+            if (!r.ok) return;
+            const data = await r.json();
+            if (data.country && countryDial[data.country]) {
+                countrySelect.value = data.country;
+            }
+        } catch (e) {
+            const nav = (navigator.language || '').toUpperCase();
+            const code = nav.includes('-') ? nav.split('-')[1] : '';
+            if (code && countryDial[code]) {
+                countrySelect.value = code;
+            }
+        }
+        updateCountryDependentFields();
+    }
+
+    function hideAddressResults() {
+        results.hidden = true;
+        results.innerHTML = '';
+        activeItems = [];
+    }
+
+    function applyAddressItem(item) {
+        addressInput.value = item.address_line1 || addressInput.value;
+        if (item.city) cityInput.value = item.city;
+        if (item.state_region) stateInput.value = item.state_region;
+        if (item.postal_code) postalInput.value = item.postal_code;
+        if (item.country && countryDial[item.country]) {
+            countrySelect.value = item.country;
+        }
+        updateCountryDependentFields();
+        hideAddressResults();
+    }
+
+    function renderAddressResults(items) {
+        activeItems = items;
+        if (!items.length) {
+            hideAddressResults();
+            return;
+        }
+
+        results.innerHTML = '';
+        items.forEach((item, index) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'address-result-item';
+            btn.textContent = item.display_name || item.address_line1 || '';
+            btn.addEventListener('click', () => applyAddressItem(activeItems[index]));
+            results.appendChild(btn);
+        });
+        results.hidden = false;
+    }
+
+    async function searchAddress() {
+        const q = addressInput.value.trim();
+        if (q.length < 3) {
+            hideAddressResults();
+            return;
+        }
+
+        const cc = (countrySelect.value || '').toUpperCase();
+        try {
+            const params = new URLSearchParams({ q: q, country: cc });
+            const r = await fetch('/api/address/autocomplete?' + params.toString());
+            if (!r.ok) {
+                hideAddressResults();
+                return;
+            }
+            const data = await r.json();
+            renderAddressResults(Array.isArray(data.items) ? data.items : []);
+        } catch (e) {
+            hideAddressResults();
         }
     }
 
-    function restoreAddressHints() {
-        try {
-            const saved = JSON.parse(localStorage.getItem('checkout_address_hints') || '[]');
-            if (!Array.isArray(saved)) return;
-            datalist.innerHTML = '';
-            saved.slice(0, 6).forEach((addr) => {
-                const option = document.createElement('option');
-                option.value = addr;
-                datalist.appendChild(option);
-            });
-        } catch (e) {}
-    }
+    addressInput.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(searchAddress, 250);
+    });
 
-    function saveAddressHint() {
-        const value = (address1.value || '').trim();
-        if (!value) return;
-        try {
-            const saved = JSON.parse(localStorage.getItem('checkout_address_hints') || '[]');
-            const next = [value].concat((Array.isArray(saved) ? saved : []).filter((v) => v !== value)).slice(0, 8);
-            localStorage.setItem('checkout_address_hints', JSON.stringify(next));
-        } catch (e) {}
-    }
+    addressInput.addEventListener('blur', function() {
+        setTimeout(hideAddressResults, 150);
+    });
 
     countrySelect.addEventListener('change', updateCountryDependentFields);
-    form.addEventListener('submit', saveAddressHint);
 
-    restoreAddressHints();
-    autoDetectCountry();
-    updateCountryDependentFields();
+    form.querySelectorAll('input[required], select[required]').forEach((input) => {
+        input.addEventListener('invalid', function(e) {
+            e.preventDefault();
+            setFieldError(input, input.validationMessage || 'Invalid value');
+        });
+        input.addEventListener('input', function() {
+            if (input.validity.valid) {
+                setFieldError(input, '');
+            }
+        });
+        input.addEventListener('change', function() {
+            if (input.validity.valid) {
+                setFieldError(input, '');
+            }
+        });
+    });
+
+    detectCountryByIp();
 })();
 </script>
 {% endblock %}
