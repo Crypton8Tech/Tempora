@@ -576,6 +576,8 @@ def _csscapital_checkout(db: Session, order: Order, cart_products: list, metadat
         total = 0.01
 
     site_url = settings.SITE_URL.rstrip("/")
+    success_url = f"{site_url}/order-success/{order.order_number}?paid=1"
+    cancel_url = f"{site_url}/payment/{order.order_number}?payment_error=1"
 
     # Build payment_metadata
     payment_metadata = {
@@ -603,7 +605,11 @@ def _csscapital_checkout(db: Session, order: Order, cart_products: list, metadat
                 "customer_email": order.guest_email or "",
                 "customer_phone": order.phone or "",
                 "customer_name": order.guest_name or "",
-                "return_url": f"{site_url}/order-success/{order.order_number}",
+                # Different CSS Capital environments use different redirect fields.
+                # Send all known variants to avoid broken second-step redirects.
+                "return_url": success_url,
+                "success_url": success_url,
+                "cancel_url": cancel_url,
                 "callback_url": f"{site_url}/api/csscapital/webhook",
                 "payment_metadata": payment_metadata,
             }
@@ -644,7 +650,9 @@ def _csscapital_checkout(db: Session, order: Order, cart_products: list, metadat
             "currency": currency,
             "order_id": order.order_number,
             "description": f"Order {order.order_number}",
-            "return_url": f"{site_url}/order-success/{order.order_number}",
+            "return_url": success_url,
+            "success_url": success_url,
+            "cancel_url": cancel_url,
             "callback_url": f"{site_url}/api/csscapital/webhook",
         }
         if api_key:
