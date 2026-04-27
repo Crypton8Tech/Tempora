@@ -41,98 +41,98 @@
                     <span class="summary-total">{{ format_price(total, currency) }}</span>
                 </div>
                 <form action="/api/checkout" method="post" class="checkout-form" id="checkoutForm">
-                    <h4 class="checkout-section-title">1. Contact Info</h4>
+                    <h4 class="checkout-section-title">1. {{ t('checkout_contact_info', lang) }}</h4>
 
                     <div class="checkout-grid-2">
                         <div class="form-group">
-                            <label>Full Name <span class="required-mark">*</span></label>
-                            <input type="text" name="full_name" class="form-input" placeholder="John Smith" value="{{ user.name if user else '' }}" required minlength="3" maxlength="120">
+                            <label>{{ t('checkout_full_name', lang) }} <span class="required-mark">*</span></label>
+                            <input type="text" name="full_name" class="form-input" placeholder="{{ t('checkout_full_name_placeholder', lang) }}" value="{{ user.name if user else '' }}" required minlength="3" maxlength="120">
                         </div>
                         <div class="form-group">
-                            <label>Email <span class="required-mark">*</span></label>
-                            <input type="email" name="email" class="form-input" placeholder="john@example.com" value="{{ user.email if user else '' }}" required maxlength="180">
+                            <label>{{ t('checkout_email', lang) }} <span class="required-mark">*</span></label>
+                            <input type="email" name="email" class="form-input" placeholder="{{ t('checkout_email_placeholder', lang) }}" value="{{ user.email if user else '' }}" required maxlength="180">
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label>Phone Number <span class="required-mark">*</span></label>
-                        <input id="checkoutPhone" type="tel" name="phone" class="form-input" placeholder="+1 555 123 4567" value="{{ user.phone if user and user.phone else '' }}" required pattern="^\+?[0-9()\-\s]{7,20}$">
+                        <label>{{ t('checkout_phone_number', lang) }} <span class="required-mark">*</span></label>
+                        <input id="checkoutPhone" type="tel" name="phone" class="form-input" placeholder="{{ t('checkout_phone_placeholder', lang) }}" value="{{ user.phone if user and user.phone else '' }}" required pattern="^\+?[0-9()\-\s]{7,20}$">
                     </div>
 
-                    <h4 class="checkout-section-title">2. Shipping Address</h4>
+                    <h4 class="checkout-section-title">2. {{ t('checkout_shipping_address', lang) }}</h4>
 
                     <div class="form-group">
-                        <label>Country <span class="required-mark">*</span></label>
+                        <label>{{ t('checkout_country', lang) }} <span class="required-mark">*</span></label>
                         <select id="checkoutCountry" name="country" class="form-input" required>
-                            <option value="">Select country</option>
-                            <option value="US">United States</option>
-                            <option value="CA">Canada</option>
-                            <option value="GB">United Kingdom</option>
-                            <option value="DE">Germany</option>
-                            <option value="FR">France</option>
-                            <option value="IT">Italy</option>
-                            <option value="ES">Spain</option>
-                            <option value="CH">Switzerland</option>
-                            <option value="PL">Poland</option>
-                            <option value="NL">Netherlands</option>
-                            <option value="BE">Belgium</option>
-                            <option value="AT">Austria</option>
-                            <option value="SE">Sweden</option>
-                            <option value="NO">Norway</option>
-                            <option value="DK">Denmark</option>
-                            <option value="CZ">Czech Republic</option>
-                            <option value="UA">Ukraine</option>
-                            <option value="TR">Turkey</option>
-                            <option value="AE">United Arab Emirates</option>
+                            <option value="">{{ t('checkout_select_country', lang) }}</option>
+                            <option value="US">{{ t('country_us', lang) }}</option>
+                            <option value="CA">{{ t('country_ca', lang) }}</option>
+                            <option value="GB">{{ t('country_gb', lang) }}</option>
+                            <option value="DE">{{ t('country_de', lang) }}</option>
+                            <option value="FR">{{ t('country_fr', lang) }}</option>
+                            <option value="IT">{{ t('country_it', lang) }}</option>
+                            <option value="ES">{{ t('country_es', lang) }}</option>
+                            <option value="CH">{{ t('country_ch', lang) }}</option>
+                            <option value="PL">{{ t('country_pl', lang) }}</option>
+                            <option value="NL">{{ t('country_nl', lang) }}</option>
+                            <option value="BE">{{ t('country_be', lang) }}</option>
+                            <option value="AT">{{ t('country_at', lang) }}</option>
+                            <option value="SE">{{ t('country_se', lang) }}</option>
+                            <option value="NO">{{ t('country_no', lang) }}</option>
+                            <option value="DK">{{ t('country_dk', lang) }}</option>
+                            <option value="CZ">{{ t('country_cz', lang) }}</option>
+                            <option value="UA">{{ t('country_ua', lang) }}</option>
+                            <option value="TR">{{ t('country_tr', lang) }}</option>
+                            <option value="AE">{{ t('country_ae', lang) }}</option>
                         </select>
                     </div>
 
                     <div class="form-group">
-                        <label>Address Line 1 <span class="required-mark">*</span></label>
-                        <input type="text" name="address_line1" class="form-input" placeholder="Street, house" list="addressSuggestions" required maxlength="180">
+                        <label>{{ t('checkout_address_line1', lang) }} <span class="required-mark">*</span></label>
+                        <input type="text" name="address_line1" class="form-input" placeholder="{{ t('checkout_address_line1_placeholder', lang) }}" list="addressSuggestions" required maxlength="180">
                         <datalist id="addressSuggestions"></datalist>
                     </div>
 
                     <div class="form-group">
-                        <label>Address Line 2</label>
-                        <input type="text" name="address_line2" class="form-input" placeholder="Apartment, office" maxlength="180">
+                        <label>{{ t('checkout_address_line2', lang) }}</label>
+                        <input type="text" name="address_line2" class="form-input" placeholder="{{ t('checkout_address_line2_placeholder', lang) }}" maxlength="180">
                     </div>
 
                     <div class="checkout-grid-3">
                         <div class="form-group">
-                            <label>City <span class="required-mark">*</span></label>
-                            <input type="text" name="city" class="form-input" placeholder="City" required maxlength="120">
+                            <label>{{ t('checkout_city', lang) }} <span class="required-mark">*</span></label>
+                            <input type="text" name="city" class="form-input" placeholder="{{ t('checkout_city_placeholder', lang) }}" required maxlength="120">
                         </div>
                         <div class="form-group">
-                            <label>State / Region</label>
-                            <input id="checkoutState" type="text" name="state_region" class="form-input" placeholder="State / Region" maxlength="120">
+                            <label>{{ t('checkout_state_region', lang) }}</label>
+                            <input id="checkoutState" type="text" name="state_region" class="form-input" placeholder="{{ t('checkout_state_placeholder', lang) }}" maxlength="120">
                         </div>
                         <div class="form-group">
-                            <label>ZIP / Postal Code <span class="required-mark">*</span></label>
-                            <input type="text" name="postal_code" class="form-input" placeholder="10001" required pattern="[A-Za-z0-9\-\s]{3,12}" maxlength="24">
+                            <label>{{ t('checkout_zip_postal', lang) }} <span class="required-mark">*</span></label>
+                            <input type="text" name="postal_code" class="form-input" placeholder="{{ t('checkout_zip_placeholder', lang) }}" required pattern="[A-Za-z0-9\-\s]{3,12}" maxlength="24">
                         </div>
                     </div>
 
-                    <h4 class="checkout-section-title">3. Confirmation</h4>
+                    <h4 class="checkout-section-title">3. {{ t('checkout_confirmation', lang) }}</h4>
 
                     <div class="checkout-grid-2">
                         <div class="form-group">
-                            <label>Company Name</label>
-                            <input type="text" name="company_name" class="form-input" placeholder="Optional" maxlength="160">
+                            <label>{{ t('checkout_company_name', lang) }}</label>
+                            <input type="text" name="company_name" class="form-input" placeholder="{{ t('checkout_optional', lang) }}" maxlength="160">
                         </div>
                         <div class="form-group">
-                            <label>Door code / floor</label>
-                            <input type="text" name="door_code" class="form-input" placeholder="Optional" maxlength="120">
+                            <label>{{ t('checkout_door_code_floor', lang) }}</label>
+                            <input type="text" name="door_code" class="form-input" placeholder="{{ t('checkout_optional', lang) }}" maxlength="120">
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label>Delivery Notes</label>
-                        <textarea name="delivery_notes" class="form-input" rows="2" placeholder="Additional instructions for courier"></textarea>
+                        <label>{{ t('checkout_delivery_notes', lang) }}</label>
+                        <textarea name="delivery_notes" class="form-input" rows="2" placeholder="{{ t('checkout_delivery_notes_placeholder', lang) }}"></textarea>
                     </div>
 
                     <div class="checkout-confirm">
-                        By confirming, you agree that contact and shipping data are valid for courier delivery.
+                        {{ t('checkout_confirm_text', lang) }}
                     </div>
 
                     {% if stripe_pk %}
@@ -227,7 +227,9 @@ function removeItem(itemId) {
         const c = (countrySelect.value || '').toUpperCase();
         const needState = c === 'US' || c === 'CA';
         stateInput.required = needState;
-        stateInput.placeholder = needState ? 'Required for this country' : 'State / Region';
+        const stateRequiredText = {{ t('checkout_state_required', lang) | tojson }};
+        const stateDefaultText = {{ t('checkout_state_placeholder', lang) | tojson }};
+        stateInput.placeholder = needState ? stateRequiredText : stateDefaultText;
 
         if (countryDial[c] && !phoneInput.value.trim()) {
             phoneInput.value = countryDial[c] + ' ';

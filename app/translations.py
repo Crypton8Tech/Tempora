@@ -943,8 +943,125 @@ SUPPORTED_LANGS = {"en", "ru", "de", "fr", "it", "es"}
 SUPPORTED_CURRENCIES = set(CURRENCY_CONFIG.keys())
 
 
+CHECKOUT_TRANSLATIONS = {
+    "en": {
+        "checkout_contact_info": "Contact Info",
+        "checkout_shipping_address": "Shipping Address",
+        "checkout_confirmation": "Confirmation",
+        "checkout_full_name": "Full Name",
+        "checkout_full_name_placeholder": "John Smith",
+        "checkout_email": "Email",
+        "checkout_email_placeholder": "john@example.com",
+        "checkout_phone_number": "Phone Number",
+        "checkout_phone_placeholder": "+1 555 123 4567",
+        "checkout_country": "Country",
+        "checkout_select_country": "Select country",
+        "checkout_address_line1": "Address Line 1",
+        "checkout_address_line1_placeholder": "Street, house",
+        "checkout_address_line2": "Address Line 2",
+        "checkout_address_line2_placeholder": "Apartment, office",
+        "checkout_city": "City",
+        "checkout_city_placeholder": "City",
+        "checkout_state_region": "State / Region",
+        "checkout_state_placeholder": "State / Region",
+        "checkout_state_required": "Required for this country",
+        "checkout_zip_postal": "ZIP / Postal Code",
+        "checkout_zip_placeholder": "10001",
+        "checkout_company_name": "Company Name",
+        "checkout_door_code_floor": "Door code / floor",
+        "checkout_delivery_notes": "Delivery Notes",
+        "checkout_delivery_notes_placeholder": "Additional instructions for courier",
+        "checkout_optional": "Optional",
+        "checkout_confirm_text": "Please confirm that contact and shipping details are correct.",
+        "country_us": "United States",
+        "country_ca": "Canada",
+        "country_gb": "United Kingdom",
+        "country_de": "Germany",
+        "country_fr": "France",
+        "country_it": "Italy",
+        "country_es": "Spain",
+        "country_ch": "Switzerland",
+        "country_pl": "Poland",
+        "country_nl": "Netherlands",
+        "country_be": "Belgium",
+        "country_at": "Austria",
+        "country_se": "Sweden",
+        "country_no": "Norway",
+        "country_dk": "Denmark",
+        "country_cz": "Czech Republic",
+        "country_ua": "Ukraine",
+        "country_tr": "Turkey",
+        "country_ae": "United Arab Emirates",
+    },
+    "ru": {
+        "checkout_contact_info": "Контактные данные",
+        "checkout_shipping_address": "Адрес доставки",
+        "checkout_confirmation": "Подтверждение",
+        "checkout_full_name": "Имя и фамилия",
+        "checkout_full_name_placeholder": "Иван Иванов",
+        "checkout_email": "Email",
+        "checkout_email_placeholder": "name@example.com",
+        "checkout_phone_number": "Телефон",
+        "checkout_phone_placeholder": "+380 99 123 45 67",
+        "checkout_country": "Страна",
+        "checkout_select_country": "Выберите страну",
+        "checkout_address_line1": "Адресная строка 1",
+        "checkout_address_line1_placeholder": "Улица, дом",
+        "checkout_address_line2": "Адресная строка 2",
+        "checkout_address_line2_placeholder": "Квартира, офис",
+        "checkout_city": "Город",
+        "checkout_city_placeholder": "Город",
+        "checkout_state_region": "Регион / Область",
+        "checkout_state_placeholder": "Регион / Область",
+        "checkout_state_required": "Обязательно для этой страны",
+        "checkout_zip_postal": "Индекс",
+        "checkout_zip_placeholder": "01001",
+        "checkout_company_name": "Название компании",
+        "checkout_door_code_floor": "Код двери / этаж",
+        "checkout_delivery_notes": "Комментарий к доставке",
+        "checkout_delivery_notes_placeholder": "Дополнительные инструкции для курьера",
+        "checkout_optional": "Необязательно",
+        "checkout_confirm_text": "Подтвердите, что контактные данные и адрес доставки указаны верно.",
+        "country_us": "США",
+        "country_ca": "Канада",
+        "country_gb": "Великобритания",
+        "country_de": "Германия",
+        "country_fr": "Франция",
+        "country_it": "Италия",
+        "country_es": "Испания",
+        "country_ch": "Швейцария",
+        "country_pl": "Польша",
+        "country_nl": "Нидерланды",
+        "country_be": "Бельгия",
+        "country_at": "Австрия",
+        "country_se": "Швеция",
+        "country_no": "Норвегия",
+        "country_dk": "Дания",
+        "country_cz": "Чехия",
+        "country_ua": "Украина",
+        "country_tr": "Турция",
+        "country_ae": "ОАЭ",
+    },
+    "de": {},
+    "fr": {},
+    "it": {},
+    "es": {},
+}
+
+
 def t(key: str, lang: str = "en") -> str:
-    return TRANSLATIONS.get(lang, TRANSLATIONS["en"]).get(key, key)
+    lang_pack = TRANSLATIONS.get(lang, TRANSLATIONS["en"])
+    if key in lang_pack:
+        return lang_pack[key]
+
+    extra_lang_pack = CHECKOUT_TRANSLATIONS.get(lang, {})
+    if key in extra_lang_pack:
+        return extra_lang_pack[key]
+
+    if key in CHECKOUT_TRANSLATIONS["en"]:
+        return CHECKOUT_TRANSLATIONS["en"][key]
+
+    return TRANSLATIONS["en"].get(key, key)
 
 
 def format_price(price_eur: float, currency: str = "eur") -> str:
