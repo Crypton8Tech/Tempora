@@ -14,6 +14,7 @@ from app.security import InMemoryRateLimiter, client_ip, is_safe_category_slug
 import uuid
 import datetime
 import logging
+from types import SimpleNamespace
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,32 @@ def _get_currency(request: Request) -> str:
 
 def _make_order_number(prefix: str = "TS") -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
+
+
+def _build_checkout_products_from_order(order: Order) -> list[tuple]:
+    """Reconstruct checkout items from saved order lines for payment retry."""
+    cart_products: list[tuple] = []
+    for item in order.items:
+        product_like = SimpleNamespace(name=item.product_name, price=item.price)
+        cart_products.append((product_like, item.quantity, None))
+    return cart_products
+
+
+def _start_checkout_with_retries(db: Session, order: Order, cart_products: list, attempts: int = 2) -> str | None:
+    """Try to create provider checkout URL with limited retries for transient failures."""
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            redirect_url = create_checkout(db, order, cart_products)
+            if redirect_url:
+                return redirect_url
+            logger.warning("Checkout URL is empty for order %s (attempt %s/%s)", order.order_number, attempt, attempts)
+        except Exception as exc:
+            last_error = exc
+            logger.error("Checkout attempt %s/%s failed for order %s: %s", attempt, attempts, order.order_number, exc)
+    if last_error:
+        logger.error("Checkout permanently failed for order %s: %s", order.order_number, last_error)
+    return None
 
 
 # ── Guest cart helpers ────────────────────────────────────────────────────────
@@ -227,15 +254,8 @@ async def checkout(
 
     db.commit()
 
-    # Универсальный запуск оплаты (Stripe, CSS Capital, YooKassa и т.д.)
-    try:
-        redirect_url = create_checkout(db, order, cart_products)
-        if redirect_url:
-            return RedirectResponse(redirect_url, status_code=303)
-    except Exception as e:
-        logger.error(f"Checkout error: {e}")
-
-    return RedirectResponse(f"/order-success/{order_number}", status_code=302)
+    # Всегда переводим на внутреннюю страницу оплаты одного формата.
+    return RedirectResponse(f"/payment/{order_number}", status_code=303)
 
 
 # ── Быстрый заказ (напрямую со страницы товара, без корзины) ──────────────────
@@ -302,15 +322,8 @@ async def quick_order(
     ))
     db.commit()
 
-    # Универсальный запуск оплаты (Stripe, CSS Capital, YooKassa и т.д.)
-    try:
-        redirect_url = create_checkout(db, order, [(product, quantity, None)])
-        if redirect_url:
-            return RedirectResponse(redirect_url, status_code=303)
-    except Exception as e:
-        logger.error(f"Quick-order checkout error: {e}")
-
-    return RedirectResponse(f"/order-success/{order_number}", status_code=302)
+    # Всегда переводим на внутреннюю страницу оплаты одного формата.
+    return RedirectResponse(f"/payment/{order_number}", status_code=303)
 
 
 # ── Payment webhooks & status ────────────────────────────────────────────────
@@ -356,6 +369,27 @@ async def payment_status(order_number: str, db: Session = Depends(get_db)):
         "total": order.total,
         "currency": order.currency,
     }
+
+
+@router.post("/payment/retry/{order_number}")
+async def payment_retry(order_number: str, db: Session = Depends(get_db)):
+    """Retry checkout session creation for an existing pending order."""
+    order = db.query(Order).filter(Order.order_number == order_number).first()
+    if not order:
+        return RedirectResponse("/", status_code=303)
+
+    if order.status == "paid":
+        return RedirectResponse(f"/order-success/{order.order_number}", status_code=303)
+
+    cart_products = _build_checkout_products_from_order(order)
+    if not cart_products:
+        return RedirectResponse(f"/payment/{order.order_number}?payment_error=1", status_code=303)
+
+    redirect_url = _start_checkout_with_retries(db, order, cart_products, attempts=2)
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    return RedirectResponse(f"/payment/{order.order_number}?payment_error=1", status_code=303)
 
 
 # ── JSON API for products (AJAX) ──────────────────────────────────────────────

@@ -20,6 +20,13 @@
             </div>
             {% endif %}
 
+            {% if payment_error %}
+            <div style="background:#fde8e8;color:#9b1c1c;padding:14px 20px;border-radius:8px;margin-bottom:24px;">
+                <i class="fas fa-exclamation-triangle"></i>
+                Не удалось автоматически открыть страницу оплаты. Нажмите кнопку ниже, чтобы повторить.
+            </div>
+            {% endif %}
+
             <h1 style="font-size:1.5rem;margin:0 0 4px 0;">{{ t('payment_title', lang) }}</h1>
             <p style="color:var(--text-dim, #888);margin:0 0 24px 0;font-size:0.95rem;">
                 {{ t('order_number_label', lang) }}: <strong>{{ order.order_number }}</strong>
@@ -89,6 +96,17 @@
                 <a href="/order-success/{{ order.order_number }}" class="btn btn-primary" style="padding:12px 32px;">
                     <i class="fas fa-check"></i> {{ t('payment_go_to_order', lang) }}
                 </a>
+                {% else %}
+                <form action="/api/payment/retry/{{ order.order_number }}" method="post" style="margin:0;">
+                    <button type="submit" class="btn btn-primary" style="padding:12px 32px;">
+                        <i class="fas fa-credit-card"></i>
+                        {% if payment_error %}
+                        Повторить переход к оплате
+                        {% else %}
+                        Перейти к оплате
+                        {% endif %}
+                    </button>
+                </form>
                 {% endif %}
                 <a href="/track/result?order_number={{ order.order_number }}" class="btn btn-outline" style="padding:12px 32px;">
                     <i class="fas fa-search"></i> {{ t('track_status', lang) }}

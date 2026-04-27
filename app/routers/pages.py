@@ -8,10 +8,10 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Product, Category, User
+from app.models import Product, Category, User, Order
 from app.auth import decode_session_token
 from app.config import settings
-from app.payments import get_active_provider, get_provider_display_name
+from app.payments import get_active_provider, get_provider_display_name, get_payment_instructions
 from app.security import normalize_currency, normalize_lang, is_safe_category_slug, is_safe_sku
 from app.translations import t as _t, format_price as _fp, loc as _loc
 
@@ -337,7 +337,28 @@ async def track_result(
 @router.get("/order-success/{order_number}")
 async def order_success(order_number: str, request: Request, db: Session = Depends(get_db)):
     ctx = _base_ctx(request, db)
-    from app.models import Order
     order = db.query(Order).filter(Order.order_number == order_number).first()
     ctx.update({"order": order})
     return templates.TemplateResponse("order_success.html", ctx)
+
+
+@router.get("/payment/{order_number}")
+async def payment_page(order_number: str, request: Request, db: Session = Depends(get_db), payment_error: int = 0):
+    """Render payment details page with retry option when checkout redirect is unavailable."""
+    ctx = _base_ctx(request, db)
+    order_number = (order_number or "").strip().upper()
+    if not _ORDER_NUMBER_RE.fullmatch(order_number):
+        ctx.update({"order": None})
+        return templates.TemplateResponse("payment.html", ctx)
+
+    order = db.query(Order).filter(Order.order_number == order_number).first()
+    provider = get_active_provider(db)
+    provider_name = get_provider_display_name(db, provider)
+    payment_instructions = get_payment_instructions(db, provider)
+    ctx.update({
+        "order": order,
+        "provider_name": provider_name,
+        "payment_instructions": payment_instructions,
+        "payment_error": bool(payment_error),
+    })
+    return templates.TemplateResponse("payment.html", ctx)

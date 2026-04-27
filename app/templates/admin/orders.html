@@ -25,6 +25,7 @@
                 <th>Номер</th>
                 <th>Дата</th>
                 <th>Товары</th>
+                <th>Клиент и доставка</th>
                 <th>Сумма</th>
                 <th>Статус</th>
                 <th>Трек-номер</th>
@@ -43,6 +44,15 @@
                     {% for item in order.items %}
                     <div style="font-size:0.85rem;">{{ item.product_name }} ×{{ item.quantity }}</div>
                     {% endfor %}
+                </td>
+                <td style="font-size:0.85rem;line-height:1.5;min-width:250px;">
+                    <div><strong>Имя:</strong> {{ order.user.name if order.user and order.user.name else (order.guest_name or '—') }}</div>
+                    <div><strong>Email:</strong> {{ order.user.email if order.user and order.user.email else (order.guest_email or '—') }}</div>
+                    <div><strong>Телефон:</strong> {{ order.phone or (order.user.phone if order.user and order.user.phone else '—') }}</div>
+                    <div><strong>Адрес:</strong> {{ order.address or '—' }}</div>
+                    {% if order.note %}
+                    <div><strong>Комментарий:</strong> {{ order.note }}</div>
+                    {% endif %}
                 </td>
                 <td>{{ "{:,.0f}".format(order.total).replace(",", " ") }} ₽</td>
                 <td>
