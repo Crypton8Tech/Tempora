@@ -193,11 +193,24 @@ async def csrf_guard(request: Request, call_next):
 async def security_headers(request: Request, call_next):
     # Security-заголовки защищают от clickjacking, MIME confusion и части XSS-векторов.
     response = await call_next(request)
+
+    # Разрешаем form-action на доверенные платёжные домены,
+    # иначе браузер блокирует 303-редирект после POST /api/checkout и /api/quick-order.
+    form_action_sources = " ".join([
+        "'self'",
+        "https://pay-csscapital-api.win",
+        "https://checkout.stripe.com",
+        "https://api.yookassa.ru",
+        "https://yookassa.ru",
+        "https://www.paypal.com",
+        "https://www.sandbox.paypal.com",
+    ])
+
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "base-uri 'self'; "
         "frame-ancestors 'none'; "
-        "form-action 'self'; "
+        f"form-action {form_action_sources}; "
         "img-src 'self' data: https:; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
         "font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
