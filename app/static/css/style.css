@@ -1276,6 +1276,17 @@ select.form-input {
     padding-right: 36px;
 }
 
+/* Native dropdown list items render outside page styles in many browsers.
+   Explicit option colors keep country list readable on light popup background. */
+select.form-input option {
+    color: #111827;
+    background-color: #ffffff;
+}
+
+select.form-input option[value=""] {
+    color: #6b7280;
+}
+
 /* Checkout section title */
 .checkout-section-title {
     font-family: var(--font-display);
