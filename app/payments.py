@@ -610,6 +610,11 @@ def _csscapital_checkout(db: Session, order: Order, cart_products: list, metadat
                 "return_url": success_url,
                 "success_url": success_url,
                 "cancel_url": cancel_url,
+                # Compatibility aliases for different CSS Capital gateway versions.
+                "success_redirect_url": success_url,
+                "cancel_redirect_url": cancel_url,
+                "successRedirectUrl": success_url,
+                "failRedirectUrl": cancel_url,
                 "callback_url": f"{site_url}/api/csscapital/webhook",
                 "payment_metadata": payment_metadata,
             }
@@ -653,6 +658,10 @@ def _csscapital_checkout(db: Session, order: Order, cart_products: list, metadat
             "return_url": success_url,
             "success_url": success_url,
             "cancel_url": cancel_url,
+            "success_redirect_url": success_url,
+            "cancel_redirect_url": cancel_url,
+            "successRedirectUrl": success_url,
+            "failRedirectUrl": cancel_url,
             "callback_url": f"{site_url}/api/csscapital/webhook",
         }
         if api_key:
