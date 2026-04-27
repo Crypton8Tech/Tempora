@@ -1,4 +1,4 @@
-"""Public page routes."""
+"""Маршруты публичных страниц сайта."""
 
 import re
 
@@ -31,6 +31,7 @@ _ORDER_NUMBER_RE = re.compile(r"^[A-Z0-9-]{4,50}$")
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def get_current_user(request: Request, db: Session) -> User | None:
+    # Восстанавливаем текущего пользователя из подписанного session-токена.
     token = request.session.get("token")
     if not token:
         return None
@@ -57,6 +58,7 @@ def _guest_cart_count(request: Request) -> int:
 
 
 def _base_ctx(request: Request, db: Session) -> dict:
+    # Базовый контекст шаблонов, который используется почти на всех страницах.
     user = get_current_user(request, db)
     lang = _get_lang(request)
     currency = _get_currency(request)
@@ -103,6 +105,7 @@ async def catalog(
     max_price: str | None = None,
     q: str | None = None,
 ):
+    # Собираем запрос каталога поэтапно из безопасных фильтров.
     ctx = _base_ctx(request, db)
     query = db.query(Product).filter(Product.is_active == True)
     categories = db.query(Category).all()
@@ -122,6 +125,7 @@ async def catalog(
 
     if category:
         if is_safe_category_slug(category):
+            # Фильтр по категории применяем только для валидного slug и существующей категории.
             cat = db.query(Category).filter(Category.slug == category).first()
             if cat:
                 query = query.filter(Product.category_id == cat.id)
@@ -139,6 +143,7 @@ async def catalog(
         query = query.filter(Product.price <= max_price_val)
 
     if q:
+        # Текстовый поиск по названию, бренду и модели.
         query = query.filter(
             (Product.name.ilike(f"%{q}%"))
             | (Product.brand.ilike(f"%{q}%"))
@@ -170,6 +175,7 @@ async def catalog(
 
 @router.get("/product/{sku}")
 async def product_detail(sku: str, request: Request, db: Session = Depends(get_db)):
+    # Сразу отбрасываем подозрительный SKU до обращения к БД.
     if not is_safe_sku(sku):
         return RedirectResponse("/catalog", status_code=302)
     ctx = _base_ctx(request, db)
@@ -196,6 +202,7 @@ async def quick_order_page(sku: str, request: Request, db: Session = Depends(get
     One-click order page: user lands here from the product card 'Buy Now' button.
     They fill in name / email / phone / address and submit — no cart required.
     """
+    # Такая же проверка SKU, как на странице товара, чтобы отсечь некорректные URL.
     if not is_safe_sku(sku):
         return RedirectResponse("/catalog", status_code=302)
 
@@ -302,6 +309,7 @@ async def track_result(
     email: str = "",
     db: Session = Depends(get_db),
 ):
+    # Трекинг возвращает заказ только его законному владельцу.
     ctx = _base_ctx(request, db)
     from app.models import Order
     order_number = (order_number or "").strip().upper()
@@ -313,9 +321,11 @@ async def track_result(
     if order:
         user = ctx.get("user")
         if user:
+            # Авторизованный пользователь видит только свои заказы.
             if order.user_id != user.id:
                 order = None
         else:
+            # Гость подтверждает право доступа через совпадающий email.
             email_ok = bool(email and order.guest_email and email.strip().lower() == order.guest_email.lower())
             if not email_ok:
                 order = None

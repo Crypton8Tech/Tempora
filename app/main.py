@@ -1,4 +1,4 @@
-"""FastAPI main application."""
+"""Главная точка входа FastAPI-приложения."""
 
 import os
 from contextlib import asynccontextmanager
@@ -25,7 +25,7 @@ from app.routers import pages, auth, api, admin
 
 # ── Locale detection helpers ──────────────────────────────────────────────────
 
-# Map full BCP-47 tag → preferred currency
+# Карта полного BCP-47 тега -> предпочтительная валюта
 _TAG_CURRENCY: dict[str, str] = {
     "en-gb": "gbp",
     "en-ie": "eur",
@@ -45,7 +45,7 @@ _TAG_CURRENCY: dict[str, str] = {
     "es-es": "eur",
 }
 
-# Map 2-letter lang → default currency
+# Карта 2-буквенного языка -> валюта по умолчанию
 _LANG_CURRENCY: dict[str, str] = {
     "en": "eur",
     "ru": "eur",
@@ -57,10 +57,10 @@ _LANG_CURRENCY: dict[str, str] = {
 
 
 def _detect_lang(accept_language: str) -> str:
-    """Parse Accept-Language header and return the best supported language code."""
+    """Разбирает Accept-Language и возвращает лучший поддерживаемый язык."""
     if not accept_language:
         return "en"
-    # e.g. "de-DE,de;q=0.9,en;q=0.8,ru;q=0.7"
+    # Пример: "de-DE,de;q=0.9,en;q=0.8,ru;q=0.7"
     for part in accept_language.split(","):
         tag = part.split(";")[0].strip().lower()
         lang2 = tag[:2]
@@ -70,7 +70,7 @@ def _detect_lang(accept_language: str) -> str:
 
 
 def _detect_currency(lang: str, accept_language: str) -> str:
-    """Detect best currency from Accept-Language header."""
+    """Определяет наиболее подходящую валюту по Accept-Language."""
     if not accept_language:
         return _LANG_CURRENCY.get(lang, "eur")
     first_tag = accept_language.split(",")[0].strip().lower()
@@ -83,7 +83,7 @@ def _detect_currency(lang: str, accept_language: str) -> str:
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    """Startup / shutdown events."""
+    """События запуска/остановки приложения."""
     init_db()
     from app.database import get_db_session
     from app.models import Category
@@ -105,6 +105,8 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(title="TemporaShop", lifespan=lifespan)
 
+# SessionMiddleware хранит подписанные данные сессии в cookie.
+# `same_site` и `https_only` напрямую влияют на защищённость cookie.
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.SECRET_KEY,
@@ -127,8 +129,8 @@ templates.env.globals["loc"] = _loc
 @app.middleware("http")
 async def auto_detect_locale(request: Request, call_next):
     """
-    On the very first visit (no lang/currency cookie set) parse Accept-Language
-    and set sensible defaults so the user immediately sees their language + currency.
+    При первом визите (нет cookie lang/currency) парсим Accept-Language
+    и выставляем разумные значения по умолчанию.
     """
     response = await call_next(request)
 
@@ -136,6 +138,7 @@ async def auto_detect_locale(request: Request, call_next):
     has_cur  = request.cookies.get("currency")
 
     if not has_lang or not has_cur:
+        # Если пользователь ещё не выбрал настройки, определяем их из заголовков браузера.
         accept_lang = request.headers.get("accept-language", "")
         lang     = has_lang or _detect_lang(accept_lang)
         currency = has_cur  or _detect_currency(lang, accept_lang)
@@ -150,7 +153,8 @@ async def auto_detect_locale(request: Request, call_next):
 
 @app.middleware("http")
 async def csrf_guard(request: Request, call_next):
-    """Block cross-site unsafe requests and require CSRF token, excluding payment webhooks."""
+    """Блокирует cross-site небезопасные запросы и требует CSRF-токен (кроме webhook)."""
+    # CSRF-токен хранится в cookie и должен приходить в каждом POST/PUT/PATCH/DELETE.
     cookie_token = request.cookies.get("csrf_token", "").strip()
     csrf_token = cookie_token or generate_csrf_token()
     request.state.csrf_token = csrf_token
@@ -161,12 +165,14 @@ async def csrf_guard(request: Request, call_next):
             path.endswith("/webhook") or path.startswith("/api/custom-webhook/")
         )
         if not is_webhook:
+            # Первая линия защиты: запрос должен идти с нашего origin.
             if not is_same_origin_request(request):
                 return Response(status_code=403, content="Forbidden")
 
             expected = cookie_token
             provided = await extract_csrf_token(request)
 
+            # Вторая линия защиты: токен в запросе должен совпадать с токеном в cookie.
             if not is_valid_csrf_token(expected, provided):
                 return Response(status_code=403, content="Forbidden")
 
@@ -185,6 +191,7 @@ async def csrf_guard(request: Request, call_next):
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
+    # Security-заголовки защищают от clickjacking, MIME confusion и части XSS-векторов.
     response = await call_next(request)
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
@@ -207,6 +214,7 @@ async def security_headers(request: Request, call_next):
 
 @app.post("/set-lang")
 async def set_language(request: Request, lang: str = Form("en"), next_url: str = Form("/")):
+    # Разрешаем только поддерживаемые коды языка из allow-list.
     lang = normalize_lang(lang, default="en")
     target = safe_redirect_target(request, fallback="/", value=next_url)
     response = Response(status_code=302, headers={"Location": target})
@@ -216,6 +224,7 @@ async def set_language(request: Request, lang: str = Form("en"), next_url: str =
 
 @app.post("/set-currency")
 async def set_currency(request: Request, cur: str = Form("eur"), next_url: str = Form("/")):
+    # Разрешаем только поддерживаемые валюты из allow-list.
     cur = normalize_currency(cur, default="eur")
     target = safe_redirect_target(request, fallback="/", value=next_url)
     response = Response(status_code=302, headers={"Location": target})
@@ -225,14 +234,14 @@ async def set_currency(request: Request, cur: str = Form("eur"), next_url: str =
 
 @app.get("/set-lang/{lang}")
 async def legacy_set_language(lang: str, request: Request):
-    # Keep legacy GET route for compatibility, but do not mutate state via GET.
+    # Legacy GET оставлен для совместимости, но состояние через GET больше не меняем.
     target = safe_redirect_target(request, fallback="/")
     return Response(status_code=302, headers={"Location": target})
 
 
 @app.get("/set-currency/{cur}")
 async def legacy_set_currency(cur: str, request: Request):
-    # Keep legacy GET route for compatibility, but do not mutate state via GET.
+    # Legacy GET оставлен для совместимости, но состояние через GET больше не меняем.
     target = safe_redirect_target(request, fallback="/")
     return Response(status_code=302, headers={"Location": target})
 

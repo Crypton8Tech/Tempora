@@ -1,4 +1,4 @@
-"""API routes for cart, orders, payments, and AJAX endpoints."""
+"""API-маршруты корзины, заказов, платежей и AJAX-эндпоинтов."""
 
 from fastapi import APIRouter, Request, Depends, Form, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -18,12 +18,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+# Защищаем quick-order от спама и массовых автоматических запросов.
 quick_order_limiter = InMemoryRateLimiter()
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _get_user(request: Request, db: Session) -> User | None:
+    # Получаем текущего пользователя из session-токена.
     token = request.session.get("token")
     if not token:
         return None
@@ -34,6 +36,7 @@ def _get_user(request: Request, db: Session) -> User | None:
 
 
 def _get_currency(request: Request) -> str:
+    # Валюта берётся из cookie, но ограничивается только поддерживаемыми значениями.
     cur = request.cookies.get("currency", "eur")
     from app.translations import SUPPORTED_CURRENCIES
     return cur if cur in SUPPORTED_CURRENCIES else "eur"
@@ -62,6 +65,7 @@ async def cart_add(
     quantity: int = Form(1),
     db: Session = Depends(get_db),
 ):
+    # Добавляем товар в корзину БД для пользователя или в session-корзину для гостя.
     product = db.query(Product).filter(Product.id == product_id).first()
     if not product:
         return JSONResponse({"error": "product_not_found"}, status_code=404)
@@ -162,10 +166,11 @@ async def checkout(
     guest_email: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    # Создаём заказ из текущей корзины и отправляем пользователя к платёжному провайдеру.
     user = _get_user(request, db)
     currency = _get_currency(request)
 
-    # Build items list
+    # Формируем список товаров из корзины
     cart_products: list[tuple[Product, int, CartItem | None]] = []
     if user:
         db_items = db.query(CartItem).filter(CartItem.user_id == user.id).all()
@@ -212,7 +217,7 @@ async def checkout(
             image_url=img_url,
         ))
 
-    # Clear cart
+    # Очищаем корзину после создания заказа
     if user:
         for _, _, ci in cart_products:
             if ci:
@@ -222,7 +227,7 @@ async def checkout(
 
     db.commit()
 
-    # Universal provider checkout (Stripe, CSS Capital, YooKassa, etc.)
+    # Универсальный запуск оплаты (Stripe, CSS Capital, YooKassa и т.д.)
     try:
         redirect_url = create_checkout(db, order, cart_products)
         if redirect_url:
@@ -233,7 +238,7 @@ async def checkout(
     return RedirectResponse(f"/order-success/{order_number}", status_code=302)
 
 
-# ── Quick order (direct from product page, no cart) ───────────────────────────
+# ── Быстрый заказ (напрямую со страницы товара, без корзины) ──────────────────
 
 @router.post("/quick-order")
 async def quick_order(
@@ -253,6 +258,7 @@ async def quick_order(
     """
     ip = client_ip(request)
     limiter_key = f"quick-order:{ip}"
+    # Лимитер блокирует массовые фейковые заказы с одного источника.
     if not quick_order_limiter.allowed(limiter_key, limit=20, window_seconds=60):
         raise HTTPException(status_code=429, detail="Too many quick-order requests. Please retry later.")
 
@@ -296,7 +302,7 @@ async def quick_order(
     ))
     db.commit()
 
-    # Universal provider checkout (Stripe, CSS Capital, YooKassa, etc.)
+    # Универсальный запуск оплаты (Stripe, CSS Capital, YooKassa и т.д.)
     try:
         redirect_url = create_checkout(db, order, [(product, quantity, None)])
         if redirect_url:
@@ -311,6 +317,7 @@ async def quick_order(
 
 @router.post("/{provider}/webhook")
 async def provider_webhook(provider: str, request: Request, db: Session = Depends(get_db)):
+    # Webhook — это server-to-server callback от платёжного провайдера.
     payload = await request.body()
     sig_header = (
         request.headers.get("stripe-signature", "")
@@ -360,6 +367,7 @@ async def api_products(
     db: Session = Depends(get_db),
 ):
     from app.models import Category
+    # Публичный AJAX-эндпоинт с той же защитной валидацией категории, что и в каталоге.
     query = db.query(Product).filter(Product.is_active == True)
     if category:
         if is_safe_category_slug(category):
