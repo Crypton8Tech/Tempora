@@ -1289,6 +1289,34 @@ select.form-input {
     font-style: italic;
 }
 
+.required-mark {
+    color: #d97706;
+    font-weight: 700;
+}
+
+.checkout-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.checkout-grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
+.checkout-confirm {
+    margin: 8px 0 16px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-xs);
+    background: rgba(255,255,255,0.03);
+    color: var(--text-2);
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
 /* ── Auth ───────────────────────────────────────────────────────────────── */
 .auth-section {
     display: flex;
@@ -1923,6 +1951,11 @@ textarea.admin-input { resize: vertical; }
     .advantages-grid  { grid-template-columns: 1fr; }
     .categories-grid-single { max-width: 100%; }
     .categories-grid-single .category-card { min-height: 210px; padding: 30px 20px; }
+
+    .checkout-grid-2,
+    .checkout-grid-3 {
+        grid-template-columns: 1fr;
+    }
 
     .product-detail   { gap: 28px; }
     .product-title    { font-size: 2rem; }

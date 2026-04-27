@@ -14,6 +14,7 @@ from app.security import InMemoryRateLimiter, client_ip, is_safe_category_slug
 import uuid
 import datetime
 import logging
+import re
 from types import SimpleNamespace
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 # Защищаем quick-order от спама и массовых автоматических запросов.
 quick_order_limiter = InMemoryRateLimiter()
+checkout_limiter = InMemoryRateLimiter()
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+_POSTAL_RE = re.compile(r"^[A-Za-z0-9\-\s]{3,12}$")
+
+_COUNTRY_NAMES: dict[str, str] = {
+    "US": "United States",
+    "CA": "Canada",
+    "GB": "United Kingdom",
+    "DE": "Germany",
+    "FR": "France",
+    "IT": "Italy",
+    "ES": "Spain",
+    "CH": "Switzerland",
+    "PL": "Poland",
+    "NL": "Netherlands",
+    "BE": "Belgium",
+    "AT": "Austria",
+    "SE": "Sweden",
+    "NO": "Norway",
+    "DK": "Denmark",
+    "CZ": "Czech Republic",
+    "UA": "Ukraine",
+    "TR": "Turkey",
+    "AE": "United Arab Emirates",
+}
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -71,6 +98,102 @@ def _start_checkout_with_retries(db: Session, order: Order, cart_products: list,
     if last_error:
         logger.error("Checkout permanently failed for order %s: %s", order.order_number, last_error)
     return None
+
+
+def _clean_text(value: str | None, limit: int = 255) -> str:
+    return " ".join((value or "").strip().split())[:limit]
+
+
+def _normalize_phone(value: str | None) -> str:
+    raw = (value or "").strip()
+    normalized = "".join(ch for ch in raw if ch.isdigit() or ch in "+-() ")
+    digits = "".join(ch for ch in normalized if ch.isdigit())
+    if raw.startswith("+") and normalized and not normalized.startswith("+"):
+        normalized = "+" + normalized
+    if len(digits) < 7 or len(digits) > 15:
+        raise HTTPException(status_code=422, detail="Invalid phone number format")
+    return normalized[:32]
+
+
+def _normalize_country(value: str | None) -> str:
+    code = (value or "").strip().upper()
+    if code not in _COUNTRY_NAMES:
+        raise HTTPException(status_code=422, detail="Unsupported country")
+    return code
+
+
+def _validate_checkout_payload(
+    full_name: str,
+    email: str,
+    phone: str,
+    country: str,
+    address_line1: str,
+    address_line2: str,
+    city: str,
+    state_region: str,
+    postal_code: str,
+    delivery_notes: str,
+    company_name: str,
+    door_code: str,
+) -> dict[str, str]:
+    name = _clean_text(full_name, 120)
+    email_clean = _clean_text(email, 180).lower()
+    country_code = _normalize_country(country)
+    line1 = _clean_text(address_line1, 180)
+    line2 = _clean_text(address_line2, 180)
+    city_clean = _clean_text(city, 120)
+    state_clean = _clean_text(state_region, 120)
+    postal = _clean_text(postal_code, 24).upper()
+    notes = _clean_text(delivery_notes, 600)
+    company = _clean_text(company_name, 160)
+    door = _clean_text(door_code, 120)
+
+    if len(name) < 3:
+        raise HTTPException(status_code=422, detail="Full name is required")
+    if not _EMAIL_RE.fullmatch(email_clean):
+        raise HTTPException(status_code=422, detail="Invalid email format")
+    phone_clean = _normalize_phone(phone)
+    if not line1:
+        raise HTTPException(status_code=422, detail="Address line 1 is required")
+    if not city_clean:
+        raise HTTPException(status_code=422, detail="City is required")
+    if not _POSTAL_RE.fullmatch(postal):
+        raise HTTPException(status_code=422, detail="Invalid ZIP / postal code")
+    if country_code in {"US", "CA"} and not state_clean:
+        raise HTTPException(status_code=422, detail="State / region is required for this country")
+
+    return {
+        "full_name": name,
+        "email": email_clean,
+        "phone": phone_clean,
+        "country": country_code,
+        "address_line1": line1,
+        "address_line2": line2,
+        "city": city_clean,
+        "state_region": state_clean,
+        "postal_code": postal,
+        "delivery_notes": notes,
+        "company_name": company,
+        "door_code": door,
+    }
+
+
+def _compose_shipping_address(data: dict[str, str]) -> str:
+    parts: list[str] = [
+        f"Country: {_COUNTRY_NAMES.get(data['country'], data['country'])}",
+        f"Address line 1: {data['address_line1']}",
+    ]
+    if data["address_line2"]:
+        parts.append(f"Address line 2: {data['address_line2']}")
+    parts.append(f"City: {data['city']}")
+    if data["state_region"]:
+        parts.append(f"State/Region: {data['state_region']}")
+    parts.append(f"ZIP/Postal: {data['postal_code']}")
+    if data["company_name"]:
+        parts.append(f"Company: {data['company_name']}")
+    if data["door_code"]:
+        parts.append(f"Door/Floor: {data['door_code']}")
+    return "\n".join(parts)
 
 
 # ── Guest cart helpers ────────────────────────────────────────────────────────
@@ -186,14 +309,56 @@ async def cart_remove(
 @router.post("/checkout")
 async def checkout(
     request: Request,
-    address:     str = Form(""),
+    full_name:   str = Form(""),
+    email:       str = Form(""),
     phone:       str = Form(""),
+    country:     str = Form(""),
+    address_line1: str = Form(""),
+    address_line2: str = Form(""),
+    city:        str = Form(""),
+    state_region: str = Form(""),
+    postal_code: str = Form(""),
+    company_name: str = Form(""),
+    door_code:   str = Form(""),
+    delivery_notes: str = Form(""),
+
+    # Legacy fields for backward compatibility.
+    address:     str = Form(""),
     note:        str = Form(""),
     guest_name:  str = Form(""),
     guest_email: str = Form(""),
     db: Session = Depends(get_db),
 ):
     # Создаём заказ из текущей корзины и отправляем пользователя к платёжному провайдеру.
+    ip = client_ip(request)
+    if not checkout_limiter.allowed(f"checkout:{ip}", limit=30, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many checkout requests. Please retry later.")
+
+    # Fallback for clients that still submit old field names.
+    if not full_name and guest_name:
+        full_name = guest_name
+    if not email and guest_email:
+        email = guest_email
+    if not address_line1 and address:
+        address_line1 = address
+    if not delivery_notes and note:
+        delivery_notes = note
+
+    checkout_data = _validate_checkout_payload(
+        full_name=full_name,
+        email=email,
+        phone=phone,
+        country=country,
+        address_line1=address_line1,
+        address_line2=address_line2,
+        city=city,
+        state_region=state_region,
+        postal_code=postal_code,
+        delivery_notes=delivery_notes,
+        company_name=company_name,
+        door_code=door_code,
+    )
+
     user = _get_user(request, db)
     currency = _get_currency(request)
 
@@ -220,14 +385,14 @@ async def checkout(
     order = Order(
         order_number=order_number,
         user_id=user.id if user else None,
-        guest_name=guest_name.strip() if not user else None,
-        guest_email=guest_email.strip().lower() if not user else None,
+        guest_name=checkout_data["full_name"],
+        guest_email=checkout_data["email"],
         status="pending",
         total=total,
         currency=currency,
-        address=address,
-        phone=phone,
-        note=note,
+        address=_compose_shipping_address(checkout_data),
+        phone=checkout_data["phone"],
+        note=checkout_data["delivery_notes"],
     )
     db.add(order)
     db.flush()
@@ -269,9 +434,22 @@ async def checkout(
 async def quick_order(
     request: Request,
     product_id:  int = Form(...),
+    full_name:   str = Form(""),
+    email:       str = Form(""),
+    phone:       str = Form(""),
+    country:     str = Form(""),
+    address_line1: str = Form(""),
+    address_line2: str = Form(""),
+    city:        str = Form(""),
+    state_region: str = Form(""),
+    postal_code: str = Form(""),
+    company_name: str = Form(""),
+    door_code:   str = Form(""),
+    delivery_notes: str = Form(""),
+
+    # Legacy fields for backward compatibility.
     guest_name:  str = Form(""),
     guest_email: str = Form(""),
-    phone:       str = Form(""),
     address:     str = Form(""),
     note:        str = Form(""),
     quantity:    int = Form(1),
@@ -286,6 +464,31 @@ async def quick_order(
     # Лимитер блокирует массовые фейковые заказы с одного источника.
     if not quick_order_limiter.allowed(limiter_key, limit=20, window_seconds=60):
         raise HTTPException(status_code=429, detail="Too many quick-order requests. Please retry later.")
+
+    # Fallback for clients that still submit old field names.
+    if not full_name and guest_name:
+        full_name = guest_name
+    if not email and guest_email:
+        email = guest_email
+    if not address_line1 and address:
+        address_line1 = address
+    if not delivery_notes and note:
+        delivery_notes = note
+
+    checkout_data = _validate_checkout_payload(
+        full_name=full_name,
+        email=email,
+        phone=phone,
+        country=country,
+        address_line1=address_line1,
+        address_line2=address_line2,
+        city=city,
+        state_region=state_region,
+        postal_code=postal_code,
+        delivery_notes=delivery_notes,
+        company_name=company_name,
+        door_code=door_code,
+    )
 
     product = db.query(Product).filter(Product.id == product_id, Product.is_active == True).first()
     if not product:
@@ -302,14 +505,14 @@ async def quick_order(
     order = Order(
         order_number=order_number,
         user_id=user.id if user else None,
-        guest_name=guest_name.strip() if not user else None,
-        guest_email=guest_email.strip().lower() if not user else None,
+        guest_name=checkout_data["full_name"],
+        guest_email=checkout_data["email"],
         status="pending",
         total=total,
         currency=currency,
-        address=address.strip(),
-        phone=phone.strip(),
-        note=note.strip(),
+        address=_compose_shipping_address(checkout_data),
+        phone=checkout_data["phone"],
+        note=checkout_data["delivery_notes"],
         created_at=datetime.datetime.utcnow(),
     )
     db.add(order)

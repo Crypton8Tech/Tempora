@@ -40,31 +40,99 @@
                     <span>{{ t('items_count', lang) }}: {{ items|length }}</span>
                     <span class="summary-total">{{ format_price(total, currency) }}</span>
                 </div>
-                <form action="/api/checkout" method="post" class="checkout-form">
-                    <h4 class="checkout-section-title">{{ t('delivery_title', lang) }}</h4>
+                <form action="/api/checkout" method="post" class="checkout-form" id="checkoutForm">
+                    <h4 class="checkout-section-title">1. Contact Info</h4>
 
-                    {% if is_guest %}
-                    <div class="form-group">
-                        <label>{{ t('name_label', lang) }}</label>
-                        <input type="text" name="guest_name" class="form-input" placeholder="{{ t('name_placeholder', lang) }}" required>
+                    <div class="checkout-grid-2">
+                        <div class="form-group">
+                            <label>Full Name <span class="required-mark">*</span></label>
+                            <input type="text" name="full_name" class="form-input" placeholder="John Smith" value="{{ user.name if user else '' }}" required minlength="3" maxlength="120">
+                        </div>
+                        <div class="form-group">
+                            <label>Email <span class="required-mark">*</span></label>
+                            <input type="email" name="email" class="form-input" placeholder="john@example.com" value="{{ user.email if user else '' }}" required maxlength="180">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>{{ t('email_label', lang) }}</label>
-                        <input type="email" name="guest_email" class="form-input" placeholder="{{ t('email_placeholder', lang) }}" required>
-                    </div>
-                    {% endif %}
 
                     <div class="form-group">
-                        <label>{{ t('phone_label', lang) }}</label>
-                        <input type="tel" name="phone" class="form-input" placeholder="{{ t('phone_placeholder', lang) }}" required>
+                        <label>Phone Number <span class="required-mark">*</span></label>
+                        <input id="checkoutPhone" type="tel" name="phone" class="form-input" placeholder="+1 555 123 4567" value="{{ user.phone if user and user.phone else '' }}" required pattern="^\+?[0-9()\-\s]{7,20}$">
                     </div>
+
+                    <h4 class="checkout-section-title">2. Shipping Address</h4>
+
                     <div class="form-group">
-                        <label>{{ t('address_label', lang) }}</label>
-                        <textarea name="address" class="form-input" rows="3" placeholder="{{ t('address_placeholder', lang) }}" required></textarea>
+                        <label>Country <span class="required-mark">*</span></label>
+                        <select id="checkoutCountry" name="country" class="form-input" required>
+                            <option value="">Select country</option>
+                            <option value="US">United States</option>
+                            <option value="CA">Canada</option>
+                            <option value="GB">United Kingdom</option>
+                            <option value="DE">Germany</option>
+                            <option value="FR">France</option>
+                            <option value="IT">Italy</option>
+                            <option value="ES">Spain</option>
+                            <option value="CH">Switzerland</option>
+                            <option value="PL">Poland</option>
+                            <option value="NL">Netherlands</option>
+                            <option value="BE">Belgium</option>
+                            <option value="AT">Austria</option>
+                            <option value="SE">Sweden</option>
+                            <option value="NO">Norway</option>
+                            <option value="DK">Denmark</option>
+                            <option value="CZ">Czech Republic</option>
+                            <option value="UA">Ukraine</option>
+                            <option value="TR">Turkey</option>
+                            <option value="AE">United Arab Emirates</option>
+                        </select>
                     </div>
+
                     <div class="form-group">
-                        <label>{{ t('comment_label', lang) }}</label>
-                        <textarea name="note" class="form-input" rows="2" placeholder="{{ t('comment_placeholder', lang) }}"></textarea>
+                        <label>Address Line 1 <span class="required-mark">*</span></label>
+                        <input type="text" name="address_line1" class="form-input" placeholder="Street, house" list="addressSuggestions" required maxlength="180">
+                        <datalist id="addressSuggestions"></datalist>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Address Line 2</label>
+                        <input type="text" name="address_line2" class="form-input" placeholder="Apartment, office" maxlength="180">
+                    </div>
+
+                    <div class="checkout-grid-3">
+                        <div class="form-group">
+                            <label>City <span class="required-mark">*</span></label>
+                            <input type="text" name="city" class="form-input" placeholder="City" required maxlength="120">
+                        </div>
+                        <div class="form-group">
+                            <label>State / Region</label>
+                            <input id="checkoutState" type="text" name="state_region" class="form-input" placeholder="State / Region" maxlength="120">
+                        </div>
+                        <div class="form-group">
+                            <label>ZIP / Postal Code <span class="required-mark">*</span></label>
+                            <input type="text" name="postal_code" class="form-input" placeholder="10001" required pattern="[A-Za-z0-9\-\s]{3,12}" maxlength="24">
+                        </div>
+                    </div>
+
+                    <h4 class="checkout-section-title">3. Confirmation</h4>
+
+                    <div class="checkout-grid-2">
+                        <div class="form-group">
+                            <label>Company Name</label>
+                            <input type="text" name="company_name" class="form-input" placeholder="Optional" maxlength="160">
+                        </div>
+                        <div class="form-group">
+                            <label>Door code / floor</label>
+                            <input type="text" name="door_code" class="form-input" placeholder="Optional" maxlength="120">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Delivery Notes</label>
+                        <textarea name="delivery_notes" class="form-input" rows="2" placeholder="Additional instructions for courier"></textarea>
+                    </div>
+
+                    <div class="checkout-confirm">
+                        By confirming, you agree that contact and shipping data are valid for courier delivery.
                     </div>
 
                     {% if stripe_pk %}
@@ -139,5 +207,72 @@ function removeItem(itemId) {
             }
         });
 }
+
+(function initCheckoutUX() {
+    const form = document.getElementById('checkoutForm');
+    if (!form) return;
+
+    const countrySelect = document.getElementById('checkoutCountry');
+    const phoneInput = document.getElementById('checkoutPhone');
+    const stateInput = document.getElementById('checkoutState');
+    const address1 = form.querySelector('input[name="address_line1"]');
+    const datalist = document.getElementById('addressSuggestions');
+
+    const countryDial = {
+        US: '+1', CA: '+1', GB: '+44', DE: '+49', FR: '+33', IT: '+39', ES: '+34', CH: '+41',
+        PL: '+48', NL: '+31', BE: '+32', AT: '+43', SE: '+46', NO: '+47', DK: '+45', CZ: '+420', UA: '+380', TR: '+90', AE: '+971'
+    };
+
+    function updateCountryDependentFields() {
+        const c = (countrySelect.value || '').toUpperCase();
+        const needState = c === 'US' || c === 'CA';
+        stateInput.required = needState;
+        stateInput.placeholder = needState ? 'Required for this country' : 'State / Region';
+
+        if (countryDial[c] && !phoneInput.value.trim()) {
+            phoneInput.value = countryDial[c] + ' ';
+        }
+    }
+
+    function autoDetectCountry() {
+        if (countrySelect.value) return;
+        const nav = (navigator.language || '').toUpperCase();
+        const code = nav.includes('-') ? nav.split('-')[1] : '';
+        if (code && countryDial[code]) {
+            countrySelect.value = code;
+            updateCountryDependentFields();
+        }
+    }
+
+    function restoreAddressHints() {
+        try {
+            const saved = JSON.parse(localStorage.getItem('checkout_address_hints') || '[]');
+            if (!Array.isArray(saved)) return;
+            datalist.innerHTML = '';
+            saved.slice(0, 6).forEach((addr) => {
+                const option = document.createElement('option');
+                option.value = addr;
+                datalist.appendChild(option);
+            });
+        } catch (e) {}
+    }
+
+    function saveAddressHint() {
+        const value = (address1.value || '').trim();
+        if (!value) return;
+        try {
+            const saved = JSON.parse(localStorage.getItem('checkout_address_hints') || '[]');
+            const next = [value].concat((Array.isArray(saved) ? saved : []).filter((v) => v !== value)).slice(0, 8);
+            localStorage.setItem('checkout_address_hints', JSON.stringify(next));
+        } catch (e) {}
+    }
+
+    countrySelect.addEventListener('change', updateCountryDependentFields);
+    form.addEventListener('submit', saveAddressHint);
+
+    restoreAddressHints();
+    autoDetectCountry();
+    updateCountryDependentFields();
+})();
 </script>
 {% endblock %}
