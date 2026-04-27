@@ -206,6 +206,22 @@ def _compose_shipping_address(data: dict[str, str]) -> str:
     return "\n".join(parts)
 
 
+def _extract_country_code_from_order_address(order_address: str | None) -> str:
+    """Try to recover ISO country code from persisted shipping address text."""
+    text = order_address or ""
+    marker = "Country:"
+    for line in text.splitlines():
+        if not line.startswith(marker):
+            continue
+        raw = line[len(marker):].strip()
+        if len(raw) == 2 and raw.upper() in _COUNTRY_NAMES:
+            return raw.upper()
+        for code, name in _COUNTRY_NAMES.items():
+            if raw.lower() == name.lower():
+                return code
+    return ""
+
+
 def _infer_country_from_accept_language(request: Request) -> str | None:
     header = (request.headers.get("accept-language") or "").split(",")[0].strip().upper()
     if "-" in header:
@@ -461,7 +477,10 @@ async def checkout(
         order,
         cart_products,
         attempts=2,
-        metadata={"site_url": _public_site_url_from_request(request)},
+        metadata={
+            "site_url": _public_site_url_from_request(request),
+            "country_of_residence": checkout_data["country"],
+        },
     )
     if redirect_url:
         return RedirectResponse(redirect_url, status_code=303)
@@ -578,7 +597,10 @@ async def quick_order(
         order,
         [(product, quantity, None)],
         attempts=2,
-        metadata={"site_url": _public_site_url_from_request(request)},
+        metadata={
+            "site_url": _public_site_url_from_request(request),
+            "country_of_residence": checkout_data["country"],
+        },
     )
     if redirect_url:
         return RedirectResponse(redirect_url, status_code=303)
@@ -651,7 +673,10 @@ async def payment_retry(request: Request, order_number: str, db: Session = Depen
         order,
         cart_products,
         attempts=2,
-        metadata={"site_url": _public_site_url_from_request(request)},
+        metadata={
+            "site_url": _public_site_url_from_request(request),
+            "country_of_residence": _extract_country_code_from_order_address(order.address),
+        },
     )
     if redirect_url:
         return RedirectResponse(redirect_url, status_code=303)
