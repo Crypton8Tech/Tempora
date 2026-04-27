@@ -2,157 +2,180 @@
 {% block title %}Настройки{% endblock %}
 
 {% block content %}
-<div class="admin-section">
-    <h2>Настройки платёжной системы</h2>
+<div class="settings-page">
+    <div class="settings-header">
+        <h2 class="admin-page-title">Настройки платёжной системы</h2>
+        <p class="settings-subtitle">Управляйте провайдером, ключами API, инструкциями для покупателей и своими платёжными интеграциями.</p>
+    </div>
 
     {% if success %}
-    <div class="alert alert-success" style="background:#d4edda;color:#155724;padding:12px 16px;border-radius:8px;margin-bottom:20px;">
-        Настройки успешно сохранены!
+    <div class="admin-alert admin-alert-success">
+        <i class="fas fa-check-circle"></i>
+        <span>Настройки успешно сохранены.</span>
     </div>
     {% endif %}
 
-    <form method="POST" action="/admin/settings" class="admin-form" style="max-width:600px;">
+    <form method="POST" action="/admin/settings" class="settings-card admin-form">
+        <div class="settings-grid-top">
+            <div class="form-group">
+                <label for="payment_provider">Платёжная система</label>
+                <select id="payment_provider" name="payment_provider" class="admin-input" onchange="showProviderFields()">
+                    {% for slug, name in providers.items() %}
+                    <option value="{{ slug }}" {% if slug == active_provider %}selected{% endif %}>
+                        {{ name }}{% if slug not in builtin_providers %} (свой){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
 
-        <!-- Provider selector -->
-        <div class="form-group">
-            <label for="payment_provider"><strong>Платёжная система</strong></label>
-            <select id="payment_provider" name="payment_provider"
-                    style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:15px;"
-                    onchange="showProviderFields()">
-                {% for slug, name in providers.items() %}
-                <option value="{{ slug }}" {% if slug == active_provider %}selected{% endif %}>
-                    {{ name }}{% if slug not in builtin_providers %} (свой){% endif %}
-                </option>
-                {% endfor %}
-            </select>
+            <div class="settings-provider-summary">
+                <div class="settings-pill">
+                    <span class="settings-pill-label">Активный провайдер</span>
+                    <strong id="active-provider-label">{{ providers.get(active_provider, active_provider) }}</strong>
+                </div>
+                <p class="settings-hint">Перед сохранением проверьте ключи и URL callback/webhook для выбранной платёжной системы.</p>
+            </div>
         </div>
 
-        <hr style="margin:20px 0;border:none;border-top:1px solid #eee;">
+        <div class="settings-divider"></div>
 
-        <!-- Fields for each provider (shown/hidden by JS) -->
         {% for slug, fields in provider_fields.items() %}
-        <div class="provider-fields" id="fields-{{ slug }}" style="display:none;">
-            {% for key, label, ftype, placeholder in fields %}
-            <div class="form-group">
-                <label for="{{ key }}">{{ label }}</label>
-                <input type="{{ ftype }}" id="{{ key }}" name="{{ key }}"
-                       value="{{ provider_values.get(slug, {}).get(key, '') }}"
-                       placeholder="{{ placeholder }}" autocomplete="off">
-                {% if ftype == 'password' %}
-                <small style="color:#999;">Не отображается в открытом виде</small>
-                {% endif %}
-            </div>
-            {% endfor %}
+        <section class="provider-fields" id="fields-{{ slug }}" hidden>
+            <h3 class="settings-block-title">Параметры {{ providers.get(slug, slug) }}</h3>
 
-            <!-- Payment instructions for buyers -->
-            <div class="form-group" style="margin-top:16px;">
-                <label for="pi_{{ slug }}"><strong>💳 Инструкция по оплате для покупателей</strong></label>
-                <textarea id="pi_{{ slug }}" name="{{ slug }}_payment_instructions"
-                          rows="5" placeholder="Например: Переведите сумму на карту 1234 5678 9012 3456 (Сбербанк, Иванов И.И.). В комментарии укажите номер заказа."
-                          style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;resize:vertical;">{{ payment_instructions_values.get(slug, '') }}</textarea>
-                <small style="color:#888;">Этот текст увидит покупатель на странице оплаты. Поддерживается HTML.</small>
+            <div class="settings-fields-grid">
+                {% for key, label, ftype, placeholder in fields %}
+                <div class="form-group">
+                    <label for="{{ key }}">{{ label }}</label>
+                    <input type="{{ ftype }}" id="{{ key }}" name="{{ key }}" class="admin-input"
+                           value="{{ provider_values.get(slug, {}).get(key, '') }}"
+                           placeholder="{{ placeholder }}" autocomplete="off">
+                    {% if ftype == 'password' %}
+                    <small class="settings-hint">Значение не отображается в открытом виде.</small>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="form-group settings-textarea-group">
+                <label for="pi_{{ slug }}">Инструкция по оплате для покупателей</label>
+                <textarea id="pi_{{ slug }}" name="{{ slug }}_payment_instructions" rows="5" class="admin-input settings-textarea"
+                          placeholder="Например: переведите сумму на карту, укажите номер заказа в комментарии.">{{ payment_instructions_values.get(slug, '') }}</textarea>
+                <small class="settings-hint">Текст появится на странице оплаты. Допускается HTML.</small>
             </div>
 
             {% if slug not in builtin_providers %}
-            <div style="margin-top:10px;padding:12px;background:#fff3cd;border-radius:6px;font-size:13px;color:#856404;">
-                Webhook URL: <code>{{ site_url }}/api/custom-webhook/{{ slug }}</code>
+            <div class="settings-webhook-box">
+                <strong>Webhook URL:</strong>
+                <code>{{ site_url }}/api/custom-webhook/{{ slug }}</code>
             </div>
             {% endif %}
-        </div>
+        </section>
         {% endfor %}
 
-        <button type="submit" class="btn btn-primary" style="margin-top:10px;">Сохранить</button>
+        <div class="settings-actions">
+            <button type="submit" class="admin-btn admin-btn-primary">
+                <i class="fas fa-save"></i> Сохранить настройки
+            </button>
+        </div>
     </form>
 
-    <!-- Instructions for built-in providers (shown/hidden by JS) -->
     {% for slug, info in provider_instructions.items() %}
-    <div class="provider-instructions" id="instructions-{{ slug }}"
-         style="display:none;margin-top:30px;padding:20px;background:#f8f9fa;border-radius:8px;max-width:600px;">
-        <h3 style="margin-top:0;">{{ info.title }}</h3>
-        <ol style="padding-left:20px;line-height:1.8;">
+    <section class="provider-instructions settings-card" id="instructions-{{ slug }}" hidden>
+        <h3 class="settings-block-title">{{ info.title }}</h3>
+        <ol class="settings-steps">
             {% for step in info.steps %}
             <li>{{ step.replace('{site_url}', site_url) | safe }}</li>
             {% endfor %}
         </ol>
-    </div>
+    </section>
     {% endfor %}
 
-    <!-- Delete custom provider buttons -->
     {% if custom_providers %}
-    <div style="margin-top:30px;max-width:600px;">
-        <h3>Свои платёжки</h3>
-        {% for slug, name in custom_providers.items() %}
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8f9fa;border-radius:6px;margin-bottom:8px;">
-            <span>{{ name }}</span>
-            <form method="POST" action="/admin/settings/delete-provider/{{ slug }}" style="margin:0;"
-                  onsubmit="return confirm('Удалить провайдер «{{ name }}»?')">
-                <button type="submit" style="background:#dc3545;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-size:13px;">Удалить</button>
-            </form>
+    <section class="settings-card">
+        <h3 class="settings-block-title">Свои платёжки</h3>
+        <div class="custom-provider-list">
+            {% for slug, name in custom_providers.items() %}
+            <div class="custom-provider-item">
+                <span>{{ name }}</span>
+                <form method="POST" action="/admin/settings/delete-provider/{{ slug }}" class="custom-provider-delete-form"
+                      onsubmit="return confirm('Удалить провайдер «{{ name }}»?')">
+                    <button type="submit" class="admin-btn admin-btn-danger admin-btn-sm">
+                        <i class="fas fa-trash"></i> Удалить
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
         </div>
-        {% endfor %}
-    </div>
+    </section>
     {% endif %}
 
-    <!-- Add new custom provider -->
-    <div style="margin-top:30px;padding:20px;background:#f0f4ff;border-radius:8px;max-width:600px;">
-        <h3 style="margin-top:0;">Добавить свою платёжку</h3>
+    <section class="settings-card settings-card-soft">
+        <h3 class="settings-block-title">Добавить свою платёжку</h3>
         <form method="POST" action="/admin/settings/add-provider" class="admin-form">
             <div class="form-group">
                 <label for="new_provider_name">Название платёжки</label>
-                <input type="text" id="new_provider_name" name="new_provider_name"
+                <input type="text" id="new_provider_name" name="new_provider_name" class="admin-input"
                        placeholder="Например: MyPay" required autocomplete="off">
             </div>
 
-            <div id="custom-fields-container">
-                <label><strong>Поля для ввода (можно добавить несколько)</strong></label>
-                <div class="custom-field-row" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-                    <input type="text" name="field_name" placeholder="Название поля (напр. API Key)" style="flex:2;min-width:150px;padding:8px;border:1px solid #ddd;border-radius:4px;">
-                    <select name="field_type" style="flex:1;min-width:100px;padding:8px;border:1px solid #ddd;border-radius:4px;">
+            <div id="custom-fields-container" class="custom-fields-container">
+                <label class="custom-fields-label">Поля для ввода (можно добавить несколько)</label>
+                <div class="custom-field-row">
+                    <input type="text" name="field_name" class="admin-input" placeholder="Название поля (напр. API Key)">
+                    <select name="field_type" class="admin-input">
                         <option value="text">Текст</option>
                         <option value="password">Пароль</option>
                     </select>
-                    <input type="text" name="field_placeholder" placeholder="Подсказка" style="flex:1;min-width:100px;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                    <input type="text" name="field_placeholder" class="admin-input" placeholder="Подсказка">
                 </div>
             </div>
 
-            <button type="button" onclick="addCustomField()"
-                    style="background:none;border:1px dashed #999;padding:6px 16px;border-radius:4px;cursor:pointer;color:#666;margin-bottom:12px;font-size:13px;">
-                + Добавить поле
+            <button type="button" onclick="addCustomField()" class="admin-btn admin-btn-outline admin-btn-sm settings-add-field-btn">
+                <i class="fas fa-plus"></i> Добавить поле
             </button>
 
-            <div style="margin-top:8px;">
-                <small style="color:#888;">Если не указать поля, будут добавлены стандартные: API URL, API Key, API Secret, Webhook Secret</small>
-            </div>
+            <small class="settings-hint">Если оставить поля пустыми, добавятся стандартные: API URL, API Key, API Secret, Webhook Secret.</small>
 
-            <button type="submit" class="btn btn-primary" style="margin-top:12px;">Создать провайдер</button>
+            <div class="settings-actions">
+                <button type="submit" class="admin-btn admin-btn-primary">
+                    <i class="fas fa-plug"></i> Создать провайдер
+                </button>
+            </div>
         </form>
-    </div>
+    </section>
 </div>
 
 <script>
 function showProviderFields() {
-    var sel = document.getElementById('payment_provider').value;
+    var select = document.getElementById('payment_provider');
+    var sel = select.value;
+    var selectedLabel = select.options[select.selectedIndex] ? select.options[select.selectedIndex].text : sel;
+    var activeLabel = document.getElementById('active-provider-label');
+    if (activeLabel) activeLabel.textContent = selectedLabel;
+
     document.querySelectorAll('.provider-fields').forEach(function(el) {
-        el.style.display = 'none';
+        el.hidden = true;
     });
     document.querySelectorAll('.provider-instructions').forEach(function(el) {
-        el.style.display = 'none';
+        el.hidden = true;
     });
+
     var f = document.getElementById('fields-' + sel);
-    if (f) f.style.display = 'block';
+    if (f) f.hidden = false;
     var i = document.getElementById('instructions-' + sel);
-    if (i) i.style.display = 'block';
+    if (i) i.hidden = false;
 }
 
 function addCustomField() {
     var container = document.getElementById('custom-fields-container');
     var row = document.createElement('div');
     row.className = 'custom-field-row';
-    row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;';
-    row.innerHTML = '<input type="text" name="field_name" placeholder="Название поля" style="flex:2;min-width:150px;padding:8px;border:1px solid #ddd;border-radius:4px;">'
-        + '<select name="field_type" style="flex:1;min-width:100px;padding:8px;border:1px solid #ddd;border-radius:4px;"><option value="text">Текст</option><option value="password">Пароль</option></select>'
-        + '<input type="text" name="field_placeholder" placeholder="Подсказка" style="flex:1;min-width:100px;padding:8px;border:1px solid #ddd;border-radius:4px;">'
-        + '<button type="button" onclick="this.parentElement.remove()" style="background:#dc3545;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;">✕</button>';
+
+    row.innerHTML = '<input type="text" name="field_name" class="admin-input" placeholder="Название поля">'
+        + '<select name="field_type" class="admin-input"><option value="text">Текст</option><option value="password">Пароль</option></select>'
+        + '<input type="text" name="field_placeholder" class="admin-input" placeholder="Подсказка">'
+        + '<button type="button" class="admin-btn admin-btn-danger admin-btn-sm" onclick="this.parentElement.remove()"><i class="fas fa-times"></i></button>';
     container.appendChild(row);
 }
 
