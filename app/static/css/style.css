@@ -1788,7 +1788,7 @@ select.form-input {
 .admin-nav a { color: #6b7280; font-size: 0.9rem; font-weight: 500; transition: color 0.2s; text-decoration: none; }
 .admin-nav a:hover { color: #111827; }
 .admin-nav a.active { color: #3b82f6; }
-.admin-content { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+.admin-content { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
 .admin-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
 .admin-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
 .stat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; text-align: center; transition: box-shadow 0.2s; }
@@ -1834,6 +1834,41 @@ textarea.admin-input { resize: vertical; }
 .admin-login-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 48px 40px; max-width: 400px; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 .admin-login-card h1 { font-size: 1.4rem; font-weight: 700; text-align: center; margin-bottom: 24px; color: #111827; }
 .admin-error { background: #fef2f2; color: #dc2626; padding: 10px 16px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 16px; }
+
+/* Orders table stabilization */
+.admin-table-wrap { width: 100%; overflow-x: auto; }
+.orders-table { min-width: 1180px; }
+.orders-table .col-check,
+.orders-table .cell-check { width: 40px; }
+.orders-table .cell-order-number { white-space: nowrap; font-weight: 600; }
+.orders-table .cell-order-date { white-space: nowrap; color: #4b5563; }
+.orders-table .cell-order-items { min-width: 170px; }
+.orders-table .cell-customer-meta {
+    min-width: 270px;
+    max-width: 360px;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: #374151;
+    word-break: break-word;
+}
+.orders-table .cell-order-total { white-space: nowrap; font-weight: 600; }
+.orders-table .cell-order-status { min-width: 180px; }
+.orders-table .cell-order-tracking { min-width: 220px; }
+.orders-table .cell-order-actions { min-width: 80px; }
+.order-status-form,
+.order-tracking-form,
+.order-delete-form { margin: 0; }
+.order-tracking-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.order-tracking-form .admin-tracking-input { width: 140px; }
+
+@media (max-width: 1200px) {
+    .admin-content { max-width: 100%; }
+    .orders-table { min-width: 1060px; }
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    RESPONSIVE

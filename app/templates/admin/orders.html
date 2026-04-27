@@ -16,10 +16,11 @@
 
 <div class="admin-card">
     {% if orders %}
-    <table class="admin-table">
+    <div class="admin-table-wrap">
+    <table class="admin-table orders-table">
         <thead>
             <tr>
-                <th style="width:40px;">
+                <th class="col-check">
                     <input id="selectAllOrders" type="checkbox" title="Выбрать все">
                 </th>
                 <th>Номер</th>
@@ -35,17 +36,17 @@
         <tbody>
             {% for order in orders %}
             <tr>
-                <td>
+                <td class="cell-check">
                     <input class="order-select-checkbox" type="checkbox" name="order_ids" value="{{ order.id }}" form="bulkDeleteForm">
                 </td>
-                <td><strong>{{ order.order_number }}</strong></td>
-                <td>{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
-                <td>
+                <td class="cell-order-number"><strong>{{ order.order_number }}</strong></td>
+                <td class="cell-order-date">{{ order.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                <td class="cell-order-items">
                     {% for item in order.items %}
                     <div style="font-size:0.85rem;">{{ item.product_name }} ×{{ item.quantity }}</div>
                     {% endfor %}
                 </td>
-                <td style="font-size:0.85rem;line-height:1.5;min-width:250px;">
+                <td class="cell-customer-meta">
                     <div><strong>Имя:</strong> {{ order.user.name if order.user and order.user.name else (order.guest_name or '—') }}</div>
                     <div><strong>Email:</strong> {{ order.user.email if order.user and order.user.email else (order.guest_email or '—') }}</div>
                     <div><strong>Телефон:</strong> {{ order.phone or (order.user.phone if order.user and order.user.phone else '—') }}</div>
@@ -54,9 +55,9 @@
                     <div><strong>Комментарий:</strong> {{ order.note }}</div>
                     {% endif %}
                 </td>
-                <td>{{ "{:,.0f}".format(order.total).replace(",", " ") }} ₽</td>
-                <td>
-                    <form method="post" action="/admin/orders/update/{{ order.id }}" style="margin:0;display:flex;gap:8px;align-items:center;">
+                <td class="cell-order-total">{{ "{:,.0f}".format(order.total).replace(",", " ") }} ₽</td>
+                <td class="cell-order-status">
+                    <form method="post" action="/admin/orders/update/{{ order.id }}" class="order-status-form">
                         <select name="status" class="admin-select" onchange="this.form.submit()">
                             <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>В обработке</option>
                             <option value="paid" {% if order.status == 'paid' %}selected{% endif %}>Оплачен</option>
@@ -64,13 +65,18 @@
                             <option value="delivered" {% if order.status == 'delivered' %}selected{% endif %}>Доставлен</option>
                             <option value="cancelled" {% if order.status == 'cancelled' %}selected{% endif %}>Отменён</option>
                         </select>
-                        <input type="text" name="tracking_number" class="admin-tracking-input" value="{{ order.tracking_number or '' }}" placeholder="Трек-номер">
-                        <button type="submit" class="admin-btn admin-btn-outline admin-btn-sm"><i class="fas fa-save"></i></button>
+                        <input type="hidden" name="tracking_number" value="{{ order.tracking_number or '' }}">
                     </form>
                 </td>
-                <td>{{ order.tracking_number or '—' }}</td>
-                <td>
-                    <form method="post" action="/admin/orders/delete/{{ order.id }}" onsubmit="return confirm('Удалить заказ?')" style="margin:0;">
+                <td class="cell-order-tracking">
+                    <form method="post" action="/admin/orders/update/{{ order.id }}" class="order-tracking-form">
+                        <input type="hidden" name="status" value="{{ order.status }}">
+                        <input type="text" name="tracking_number" class="admin-tracking-input" value="{{ order.tracking_number or '' }}" placeholder="Трек-номер">
+                        <button type="submit" class="admin-btn admin-btn-outline admin-btn-sm" title="Сохранить трек-номер"><i class="fas fa-save"></i></button>
+                    </form>
+                </td>
+                <td class="cell-order-actions">
+                    <form method="post" action="/admin/orders/delete/{{ order.id }}" onsubmit="return confirm('Удалить заказ?')" class="order-delete-form">
                         <button type="submit" class="admin-btn admin-btn-danger admin-btn-sm"><i class="fas fa-trash"></i></button>
                     </form>
                 </td>
@@ -78,6 +84,7 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
     {% else %}
     <p style="color: #6b7280; text-align: center; padding: 48px;">Заказов пока нет</p>
     {% endif %}
