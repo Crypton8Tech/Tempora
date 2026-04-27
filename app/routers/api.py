@@ -653,12 +653,17 @@ async def geo_country(request: Request):
 async def address_autocomplete(
     request: Request,
     q: str = Query("", min_length=1, max_length=200),
+    city: str = Query("", min_length=0, max_length=120),
     country: str = Query("", min_length=0, max_length=2),
 ):
     """Address autocomplete via OSM Nominatim with city/state/postal extraction."""
     query = (q or "").strip()
-    if len(query) < 3:
+    if len(query) < 2:
         return {"items": []}
+
+    city_value = _clean_text(city, 120)
+    if city_value:
+        query = f"{query}, {city_value}"
 
     params = {
         "q": query,

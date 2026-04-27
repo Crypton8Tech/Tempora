@@ -87,17 +87,18 @@
         </select>
       </div>
 
+      <div class="form-group">
+        <label>{{ t('checkout_city', lang) }} <span class="required-mark">*</span></label>
+        <input type="text" name="city" class="form-input" placeholder="{{ t('checkout_city_placeholder', lang) }}" required maxlength="120">
+      </div>
+
       <div class="form-group address-autocomplete">
         <label>{{ t('checkout_address_line1', lang) }} <span class="required-mark">*</span></label>
         <input id="quickAddress" type="text" name="address_line1" class="form-input" placeholder="{{ t('checkout_address_line1_placeholder', lang) }}" required maxlength="180" autocomplete="off">
         <div id="quickAddressResults" class="address-results" hidden></div>
       </div>
 
-      <div class="checkout-grid-3">
-        <div class="form-group">
-          <label>{{ t('checkout_city', lang) }} <span class="required-mark">*</span></label>
-          <input type="text" name="city" class="form-input" placeholder="{{ t('checkout_city_placeholder', lang) }}" required maxlength="120">
-        </div>
+      <div class="checkout-grid-2">
         <div class="form-group">
           <label>{{ t('checkout_state_region', lang) }}</label>
           <input id="quickState" type="text" name="state_region" class="form-input" placeholder="{{ t('checkout_state_placeholder', lang) }}" maxlength="120">
@@ -244,14 +245,15 @@
   let debounceTimer = null;
   async function searchAddress() {
     const q = addressInput.value.trim();
-    if (q.length < 3) {
+    if (q.length < 2) {
       hideAddressResults();
       return;
     }
 
     const cc = (countrySelect.value || '').toUpperCase();
+    const city = (cityInput.value || '').trim();
     try {
-      const params = new URLSearchParams({ q: q, country: cc });
+      const params = new URLSearchParams({ q: q, country: cc, city: city });
       const r = await fetch('/api/address/autocomplete?' + params.toString());
       if (!r.ok) {
         hideAddressResults();
@@ -274,6 +276,12 @@
   });
 
   countrySelect.addEventListener('change', updateCountryDependentFields);
+  cityInput.addEventListener('input', function() {
+    if (addressInput.value.trim().length >= 2) {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(searchAddress, 150);
+    }
+  });
 
   form.querySelectorAll('input[required], select[required]').forEach((input) => {
     input.addEventListener('invalid', function(e) {
