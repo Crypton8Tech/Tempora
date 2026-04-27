@@ -35,7 +35,7 @@
                 <td><strong>{{ p.name }}</strong></td>
                 <td>{{ p.brand }}</td>
                 <td style="font-family:monospace;font-size:0.85rem;">{{ p.sku }}</td>
-                <td>{{ "{:,.0f}".format(p.price).replace(",", " ") }} ₽</td>
+                <td>{{ format_price(p.price, 'usd') }}</td>
                 <td>{{ p.category.name if p.category else '—' }}</td>
                 <td>
                     {% if p.is_active %}

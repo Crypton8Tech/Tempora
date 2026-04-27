@@ -14,7 +14,7 @@
         <div class="stat-label">Заказов</div>
     </div>
     <div class="stat-card">
-        <div class="stat-value">{{ "{:,.0f}".format(total_revenue).replace(",", " ") }} ₽</div>
+        <div class="stat-value">{{ format_price(total_revenue, 'usd') }}</div>
         <div class="stat-label">Общая выручка</div>
     </div>
 </div>
@@ -47,7 +47,7 @@
                     {% elif order.status == 'cancelled' %}<span class="admin-badge admin-badge-red">Отменён</span>
                     {% else %}<span class="admin-badge admin-badge-gray">{{ order.status }}</span>{% endif %}
                 </td>
-                <td>{{ "{:,.0f}".format(order.total).replace(",", " ") }} ₽</td>
+                <td>{{ format_price(order.total, 'usd') }}</td>
             </tr>
             {% endfor %}
         </tbody>

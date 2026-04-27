@@ -55,7 +55,7 @@
                     <div><strong>Комментарий:</strong> {{ order.note }}</div>
                     {% endif %}
                 </td>
-                <td class="cell-order-total">{{ "{:,.0f}".format(order.total).replace(",", " ") }} ₽</td>
+                <td class="cell-order-total">{{ format_price(order.total, 'usd') }}</td>
                 <td class="cell-order-status">
                     <form method="post" action="/admin/orders/update/{{ order.id }}" class="order-status-form">
                         <select name="status" class="admin-select" onchange="this.form.submit()">
