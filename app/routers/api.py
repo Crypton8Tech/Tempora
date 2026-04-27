@@ -84,12 +84,18 @@ def _build_checkout_products_from_order(order: Order) -> list[tuple]:
     return cart_products
 
 
-def _start_checkout_with_retries(db: Session, order: Order, cart_products: list, attempts: int = 2) -> str | None:
+def _start_checkout_with_retries(
+    db: Session,
+    order: Order,
+    cart_products: list,
+    attempts: int = 2,
+    metadata: dict | None = None,
+) -> str | None:
     """Try to create provider checkout URL with limited retries for transient failures."""
     last_error: Exception | None = None
     for attempt in range(1, attempts + 1):
         try:
-            redirect_url = create_checkout(db, order, cart_products)
+            redirect_url = create_checkout(db, order, cart_products, metadata=metadata)
             if redirect_url:
                 return redirect_url
             logger.warning("Checkout URL is empty for order %s (attempt %s/%s)", order.order_number, attempt, attempts)
@@ -215,6 +221,15 @@ def _is_public_ip(value: str) -> bool:
         return not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast)
     except ValueError:
         return False
+
+
+def _public_site_url_from_request(request: Request) -> str:
+    """Build site base URL from incoming request/proxy headers."""
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").strip()
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").strip().lower()
+    if host:
+        return f"{proto}://{host}".rstrip("/")
+    return str(request.base_url).rstrip("/")
 
 
 # ── Guest cart helpers ────────────────────────────────────────────────────────
@@ -441,7 +456,13 @@ async def checkout(
     db.commit()
 
     # Сначала пробуем сразу открыть страницу провайдера оплаты.
-    redirect_url = _start_checkout_with_retries(db, order, cart_products, attempts=2)
+    redirect_url = _start_checkout_with_retries(
+        db,
+        order,
+        cart_products,
+        attempts=2,
+        metadata={"site_url": _public_site_url_from_request(request)},
+    )
     if redirect_url:
         return RedirectResponse(redirect_url, status_code=303)
 
@@ -552,7 +573,13 @@ async def quick_order(
     db.commit()
 
     # Сначала пробуем сразу открыть страницу провайдера оплаты.
-    redirect_url = _start_checkout_with_retries(db, order, [(product, quantity, None)], attempts=2)
+    redirect_url = _start_checkout_with_retries(
+        db,
+        order,
+        [(product, quantity, None)],
+        attempts=2,
+        metadata={"site_url": _public_site_url_from_request(request)},
+    )
     if redirect_url:
         return RedirectResponse(redirect_url, status_code=303)
 
@@ -606,7 +633,7 @@ async def payment_status(order_number: str, db: Session = Depends(get_db)):
 
 
 @router.post("/payment/retry/{order_number}")
-async def payment_retry(order_number: str, db: Session = Depends(get_db)):
+async def payment_retry(request: Request, order_number: str, db: Session = Depends(get_db)):
     """Retry checkout session creation for an existing pending order."""
     order = db.query(Order).filter(Order.order_number == order_number).first()
     if not order:
@@ -619,7 +646,13 @@ async def payment_retry(order_number: str, db: Session = Depends(get_db)):
     if not cart_products:
         return RedirectResponse(f"/payment/{order.order_number}?payment_error=1", status_code=303)
 
-    redirect_url = _start_checkout_with_retries(db, order, cart_products, attempts=2)
+    redirect_url = _start_checkout_with_retries(
+        db,
+        order,
+        cart_products,
+        attempts=2,
+        metadata={"site_url": _public_site_url_from_request(request)},
+    )
     if redirect_url:
         return RedirectResponse(redirect_url, status_code=303)
 

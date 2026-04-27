@@ -566,7 +566,7 @@ def _csscapital_checkout(db: Session, order: Order, cart_products: list, metadat
     base_url = (s.get("csscapital_api_base_url") or "https://pay-csscapital-api.win").strip().rstrip("/")
     api_key = (s.get("csscapital_api_key") or settings.CSSCAPITAL_API_KEY or "").strip()
     payment_page_url = (s.get("csscapital_payment_page_url") or "").strip()
-    integration_origin = (s.get("csscapital_integration_origin") or settings.SITE_URL).strip()
+    integration_origin = (s.get("csscapital_integration_origin") or "").strip()
     payment_method = (s.get("csscapital_payment_method") or "card").strip() or "card"
 
     total_eur = round(sum(float(p.price) * q for p, q, _ in cart_products), 2)
@@ -575,7 +575,12 @@ def _csscapital_checkout(db: Session, order: Order, cart_products: list, metadat
     if total < 0.01:
         total = 0.01
 
-    site_url = settings.SITE_URL.rstrip("/")
+    site_url_meta = ""
+    if metadata and isinstance(metadata, dict):
+        site_url_meta = str(metadata.get("site_url", "")).strip().rstrip("/")
+    site_url = site_url_meta or settings.SITE_URL.rstrip("/")
+    if not integration_origin and site_url.startswith("http"):
+        integration_origin = site_url
     success_url = f"{site_url}/order-success/{order.order_number}?paid=1"
     cancel_url = f"{site_url}/payment/{order.order_number}?payment_error=1"
 
