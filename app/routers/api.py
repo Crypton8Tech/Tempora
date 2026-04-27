@@ -254,8 +254,13 @@ async def checkout(
 
     db.commit()
 
-    # Всегда переводим на внутреннюю страницу оплаты одного формата.
-    return RedirectResponse(f"/payment/{order_number}", status_code=303)
+    # Сначала пробуем сразу открыть страницу провайдера оплаты.
+    redirect_url = _start_checkout_with_retries(db, order, cart_products, attempts=2)
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    # Если провайдер временно не отдал URL, уводим на внутреннюю страницу с повтором.
+    return RedirectResponse(f"/payment/{order_number}?payment_error=1", status_code=303)
 
 
 # ── Быстрый заказ (напрямую со страницы товара, без корзины) ──────────────────
@@ -322,8 +327,13 @@ async def quick_order(
     ))
     db.commit()
 
-    # Всегда переводим на внутреннюю страницу оплаты одного формата.
-    return RedirectResponse(f"/payment/{order_number}", status_code=303)
+    # Сначала пробуем сразу открыть страницу провайдера оплаты.
+    redirect_url = _start_checkout_with_retries(db, order, [(product, quantity, None)], attempts=2)
+    if redirect_url:
+        return RedirectResponse(redirect_url, status_code=303)
+
+    # Если провайдер временно не отдал URL, уводим на внутреннюю страницу с повтором.
+    return RedirectResponse(f"/payment/{order_number}?payment_error=1", status_code=303)
 
 
 # ── Payment webhooks & status ────────────────────────────────────────────────
